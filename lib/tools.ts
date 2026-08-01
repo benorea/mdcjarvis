@@ -13,7 +13,8 @@ import {
 import { fieldVocabularyForPrompt } from "./reportCardFields";
 import { googleCalendarConfigured, listUpcomingEvents } from "./googleCalendar";
 import { localToUtcDate, todayInBusinessTimezone } from "./timezone";
-import { smsConfigured } from "./sms";
+import { pushConfigured } from "./webpush";
+import { squareConfigured, createDraftInvoice } from "./square";
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
@@ -111,7 +112,19 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "wordpress_bookings_read",
     description:
-      "Reads confirmed bookings from the mayday-hub WordPress plugin's ICS calendar feed (read-only, secret-URL feed, no OAuth). Only works if WORDPRESS_ICS_URL is configured in env.",
+      "Reads upcoming confirmed bookings. Uses the richer live REST API (dollar amounts, dog names, per-booking detail) when WORDPRESS_API_URL/WORDPRESS_API_KEY are configured; falls back to the basic ICS feed (WORDPRESS_ICS_URL) otherwise. Read-only either way.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "wordpress_pricing_read",
+    description:
+      "Reads the CURRENT admin-set prices straight from the live mayday-hub site — the actual numbers the booking widget charges right now, not whatever's written in the saved business context doc (which can go stale after a price change). Use this instead of quoting prices from memory when it matters that the number is current. Only works if WORDPRESS_API_URL/WORDPRESS_API_KEY are configured.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "estimate_monthly_earnings",
+    description:
+      "Estimates THIS MONTH's revenue from bookings already confirmed on the calendar (sums each booking's actual saved price) and compares it to that month's ramped target. This is a projection from what's booked, NOT the same as pace_check (which sums what Ashley has actually logged as earned via log_revenue) — booked money isn't in-hand money yet. Only works if WORDPRESS_API_URL/WORDPRESS_API_KEY are configured.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -172,9 +185,37 @@ If the dog's name doesn't match one on file, the tool will return the valid list
     },
   },
   {
+    name: "create_invoice",
+    description:
+      "Creates a DRAFT invoice in Square for a client — never publishes or sends it. Ashley reviews and sends it herself from the Square Dashboard. Use this when she asks to invoice/bill a client for something. Only works if SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID are configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        client_name: { type: "string", description: "Client's full name." },
+        client_email: { type: "string", description: "Optional but recommended — needed for Square to eventually email it once she publishes." },
+        client_phone: { type: "string", description: "Optional." },
+        line_items: {
+          type: "array",
+          description: "One or more charges. Each needs a plain description and a dollar amount.",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              amount: { type: "number", description: "Dollars, e.g. 68 for $68.00." },
+            },
+            required: ["description", "amount"],
+          },
+        },
+        due_date: { type: "string", description: "YYYY-MM-DD. Defaults to 7 days out if omitted." },
+        note: { type: "string", description: "Optional message/memo shown on the invoice." },
+      },
+      required: ["client_name", "line_items"],
+    },
+  },
+  {
     name: "schedule_reminder",
     description:
-      "Schedules a text reminder to be sent to Ashley's phone at a specific date/time. Use this whenever she asks to be reminded of something ('don't let me forget to...', 'remind me at...'). Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. Only works if Twilio and OWNER_PHONE_NUMBER are configured.",
+      "Schedules a push notification reminder to Ashley's phone/devices at a specific date/time. Use this whenever she asks to be reminded of something ('don't let me forget to...', 'remind me at...'). Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. Only works if push notifications are configured (VAPID keys set, at least one device subscribed).",
     input_schema: {
       type: "object",
       properties: {
@@ -226,11 +267,20 @@ export async function runTool(
     case "wordpress_bookings_read":
       return wordpressBookingsRead();
 
+    case "wordpress_pricing_read":
+      return wordpressPricingRead();
+
+    case "estimate_monthly_earnings":
+      return estimateMonthlyEarnings();
+
     case "submit_report_card":
       return submitReportCard(input);
 
     case "schedule_reminder":
       return scheduleReminder(input);
+
+    case "create_invoice":
+      return createInvoice(input);
 
     default:
       return fail(`Unknown tool: ${name}`);
@@ -372,13 +422,38 @@ async function googleCalendarRead(): Promise<ToolResult> {
   }
 }
 
+function wordpressApiConfigured(): boolean {
+  return Boolean(process.env.WORDPRESS_API_URL && process.env.WORDPRESS_API_KEY);
+}
+
+/** GET a mayday-hub REST route with the shared Jarvis API key. Throws on non-2xx. */
+async function wordpressApiGet(path: string): Promise<any> {
+  const base = process.env.WORDPRESS_API_URL!.replace(/\/$/, "");
+  const res = await fetch(`${base}/wp-json/mayday-hub/v1/${path}`, {
+    headers: { Authorization: `Bearer ${process.env.WORDPRESS_API_KEY}` },
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `WordPress returned ${res.status}`);
+  return data;
+}
+
 async function wordpressBookingsRead(): Promise<ToolResult> {
+  if (wordpressApiConfigured()) {
+    try {
+      const data = await wordpressApiGet("bookings?days=45");
+      return ok({ configured: true, source: "live_api", ...data });
+    } catch (err) {
+      return fail(`Could not read live bookings: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const icsUrl = process.env.WORDPRESS_ICS_URL;
   if (!icsUrl) {
     return ok({
       configured: false,
       message:
-        "WordPress bookings read is not configured. Set WORDPRESS_ICS_URL (the secret ICS feed URL from MayDay Bookings -> Settings) in env to enable this.",
+        "WordPress bookings read is not configured. Set WORDPRESS_API_URL/WORDPRESS_API_KEY for full detail, or WORDPRESS_ICS_URL for a basic read-only feed.",
     });
   }
 
@@ -389,11 +464,62 @@ async function wordpressBookingsRead(): Promise<ToolResult> {
     }
     const text = await res.text();
     const events = parseIcsEvents(text).slice(0, 10);
-    return ok({ configured: true, upcoming_bookings: events });
+    return ok({ configured: true, source: "ics_feed", upcoming_bookings: events });
   } catch (err) {
     return fail(
       `Could not fetch ICS feed: ${err instanceof Error ? err.message : String(err)}`
     );
+  }
+}
+
+async function wordpressPricingRead(): Promise<ToolResult> {
+  if (!wordpressApiConfigured()) {
+    return ok({
+      configured: false,
+      message: "Live pricing isn't connected. Set WORDPRESS_API_URL and WORDPRESS_API_KEY in env.",
+    });
+  }
+  try {
+    const data = await wordpressApiGet("pricing");
+    return ok({ configured: true, ...data });
+  } catch (err) {
+    return fail(`Could not read live pricing: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function estimateMonthlyEarnings(): Promise<ToolResult> {
+  if (!wordpressApiConfigured()) {
+    return ok({
+      configured: false,
+      message: "Live bookings aren't connected. Set WORDPRESS_API_URL and WORDPRESS_API_KEY in env.",
+    });
+  }
+
+  try {
+    const monthKey = currentMonthKey();
+    const [y, m] = monthKey.split("-").map(Number);
+    const daysLeftInMonth = new Date(y, m, 0).getDate() - new Date().getDate() + 1;
+    const data = await wordpressApiGet(`bookings?days=${Math.max(daysLeftInMonth, 1)}`);
+
+    const bookingsThisMonth = (data.bookings || []).filter(
+      (b: any) => typeof b.check_in === "string" && b.check_in.slice(0, 7) === monthKey
+    );
+    const bookedProjected = bookingsThisMonth.reduce(
+      (sum: number, b: any) => sum + Number(b.subtotal || 0),
+      0
+    );
+
+    const target = targetForMonth(monthKey);
+
+    return ok({
+      month: target?.label || monthKey,
+      booked_projected: bookedProjected,
+      target: target?.target ?? null,
+      booking_count: bookingsThisMonth.length,
+      note: "This is what's already on the calendar, not money in hand — compare against pace_check's logged/actual number separately.",
+    });
+  } catch (err) {
+    return fail(`Could not estimate earnings: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -437,9 +563,9 @@ async function submitReportCard(input: Record<string, unknown>): Promise<ToolRes
 }
 
 async function scheduleReminder(input: Record<string, unknown>): Promise<ToolResult> {
-  if (!smsConfigured() || !process.env.OWNER_PHONE_NUMBER) {
+  if (!pushConfigured()) {
     return fail(
-      "Text reminders aren't set up yet — need TWILIO_ENABLED=true, Twilio credentials, and OWNER_PHONE_NUMBER in env."
+      "Reminders aren't set up yet — need VAPID keys configured and at least one device with notifications enabled."
     );
   }
 
@@ -466,6 +592,46 @@ async function scheduleReminder(input: Record<string, unknown>): Promise<ToolRes
   if (error) return fail(error.message);
 
   return ok({ scheduled: true, message, remind_at_utc: remindAt.toISOString(), remind_at_local: `${date} ${time} America/Denver` });
+}
+
+async function createInvoice(input: Record<string, unknown>): Promise<ToolResult> {
+  if (!squareConfigured()) {
+    return fail("Square isn't connected yet. Set SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID in env.");
+  }
+
+  const clientName = String(input.client_name || "").trim();
+  if (!clientName) return fail("client_name is required");
+
+  const rawItems = Array.isArray(input.line_items) ? input.line_items : [];
+  const lineItems = rawItems
+    .map((item: any) => ({
+      description: String(item?.description || "").trim(),
+      amount: Number(item?.amount),
+    }))
+    .filter((item) => item.description && Number.isFinite(item.amount) && item.amount > 0);
+
+  if (lineItems.length === 0) {
+    return fail("line_items must have at least one item with a description and a positive amount");
+  }
+
+  try {
+    const result = await createDraftInvoice(clientName, lineItems, {
+      email: typeof input.client_email === "string" ? input.client_email : undefined,
+      phone: typeof input.client_phone === "string" ? input.client_phone : undefined,
+      dueDate: typeof input.due_date === "string" ? input.due_date : undefined,
+      note: typeof input.note === "string" ? input.note : undefined,
+    });
+
+    return ok({
+      created: true,
+      status: result.status,
+      total: result.totalDollars,
+      invoice_id: result.invoiceId,
+      note: "This is a DRAFT only — nothing was sent. Review and publish it from the Square Dashboard when ready.",
+    });
+  } catch (err) {
+    return fail(`Could not create invoice: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function parseIcsEvents(ics: string): { summary: string; start: string }[] {

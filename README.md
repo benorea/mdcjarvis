@@ -2,8 +2,9 @@
 
 A personal AI assistant for MayDay & Co. Text it or talk to it, and it answers
 grounded in your actual operating plan — pricing, routines, the $10k ramp,
-guardrails — instead of generic dog-business advice. Runs your report cards
-and calendar too, wired into the mayday-hub WordPress plugin.
+guardrails — instead of generic dog-business advice. Runs your report cards,
+calendar, live pricing/bookings, invoice drafts, and reminders too, wired
+into the mayday-hub WordPress plugin and Square.
 
 Stack: Next.js (App Router) + Supabase (Postgres) + Anthropic (Claude,
 tool-use). Ships as an installable PWA with push-to-talk voice using the
@@ -16,10 +17,11 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
 - `lib/chatEngine.ts` — the shared turn logic (system prompt + history +
   tool loop + current date/time injection). Used by the web chat route and
   the Twilio SMS route.
-- `lib/tools.ts` — the tools Claude can call: `get_business_context`,
+- `lib/tools.ts` — everything Claude can do: `get_business_context`,
   `log_revenue`, `pace_check`, `daily_task`, `weekly_review`,
-  `monthly_close`, `submit_report_card`, `schedule_reminder`,
-  `google_calendar_read`, `wordpress_bookings_read`.
+  `monthly_close`, `submit_report_card`, `wordpress_pricing_read`,
+  `wordpress_bookings_read`, `estimate_monthly_earnings`,
+  `schedule_reminder`, `create_invoice`, `google_calendar_read`.
 - `lib/planData.ts` — the ramped monthly targets, plan phases, and check-in
   questions, as structured data the tools compute against.
 - `lib/reportCardFields.ts` — the exact field vocabulary the WordPress report
@@ -27,7 +29,10 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
   use only these values and never invent one.
 - `lib/googleCalendar.ts` — Google Calendar read/write via a personal OAuth
   refresh token.
-- `lib/sms.ts` — outbound SMS via Twilio's REST API.
+- `lib/square.ts` — Square Orders + Invoices (DRAFT only — no publish/send
+  capability exists in this file by design).
+- `lib/webpush.ts` — free push-notification delivery (VAPID), used for
+  reminders.
 - `lib/timezone.ts` — converts local (America/Denver) date/times to UTC
   correctly (DST-aware), and injects "right now" into the system prompt so
   Claude never has to guess the date.
@@ -35,16 +40,18 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
 - `content/business-context.md` — the full operating plan in prose. This is
   what actually grounds Jarvis. **Edit this file when your plan changes.**
 - `components/ChatUI.tsx` — the PWA chat UI: password lock screen, text
-  input, push-to-talk mic button, spoken replies, and history that survives
+  input, push-to-talk mic button, spoken replies, copy button on replies
+  (handy for drafted texts), notification opt-in, and history that survives
   page reloads.
 - `app/api/twilio/sms/route.ts` — inbound-SMS webhook, off by default
   (`TWILIO_ENABLED=false`).
 - `app/api/webhooks/booking/route.ts` — receives booking-confirmed events
   from the WordPress plugin and creates the Google Calendar event.
 - `app/api/cron/reminders/route.ts` — polled by GitHub Actions every 5
-  minutes; sends any due reminders as texts.
+  minutes; pushes any due reminders as notifications.
+- `app/api/push/subscribe/route.ts` — stores a device's push subscription.
 - `supabase/schema.sql` — `business_context`, `conversations`,
-  `transactions`, `check_ins`, `reminders`.
+  `transactions`, `check_ins`, `reminders`, `push_subscriptions`.
 - `.github/workflows/reminders.yml` — the free 5-minute reminder poller.
 
 ## Setup
@@ -82,9 +89,9 @@ Fill in at minimum:
 - `APP_PASSWORD` — defaults to `mayday` if you leave it out, but set it
   explicitly once you're live.
 
-Everything else is optional and the app runs fine without it — Twilio,
-report cards, Google Calendar, and reminders are all inert until configured
-(each tool tells you plainly it's "not set up" instead of pretending to work).
+Everything else is optional and the app runs fine without it — report cards,
+Google Calendar, reminders, and Square are all inert until configured (each
+tool tells you plainly it's "not set up" instead of pretending to work).
 
 ### 5. Seed your business context into Supabase
 
@@ -138,10 +145,13 @@ silently failing.
 ## Security — what's actually protecting your keys
 
 - **API keys never touch the browser.** `ANTHROPIC_API_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY`, Twilio credentials, Google OAuth secrets —
+  `SUPABASE_SERVICE_ROLE_KEY`, Google OAuth secrets, `SQUARE_ACCESS_TOKEN` —
   all of it only exists in server-side code (API routes) and your
   deployment platform's encrypted environment variables. The client bundle
   never references them, so there's nothing to find by inspecting the app.
+  (The one deliberate exception is `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — that's
+  the *public* half of a push-notification keypair, meant to be public,
+  same idea as a public key in any asymmetric crypto setup.)
 - **Nothing is committed to git.** `.env.local` is gitignored; only
   `.env.example` (blank placeholders) is in the repo.
 - **The PWA itself is password-gated** (`APP_PASSWORD`, default `mayday`):
@@ -149,12 +159,16 @@ silently failing.
   `/api/conversations` request — not just a client-side curtain someone
   could bypass by viewing page source.
 - **Every webhook/integration endpoint requires its own shared secret**,
-  compared with a timing-safe check: the WordPress report-card endpoint
-  (Bearer token), the booking-confirmed webhook (`X-Jarvis-Secret`), and
-  the reminders cron endpoint (`X-Cron-Secret`). None of them are open.
+  compared with a timing-safe check: the WordPress API endpoints (Bearer
+  token), the booking-confirmed webhook (`X-Jarvis-Secret`), and the
+  reminders cron endpoint (`X-Cron-Secret`). None of them are open.
 - **The WordPress plugin doesn't hardcode anything either** — its secrets
   live in the WP options table (set from the admin UI), not in the PHP
   source, so the plugin zip itself is safe to hand around.
+- **Square invoices are draft-only, structurally.** `lib/square.ts` has no
+  function that publishes or sends an invoice — that capability doesn't
+  exist in the codebase, not just "isn't called." Sending happens only when
+  you personally do it from the Square Dashboard.
 
 Known limitation: `/api/auth` (the password check) has no rate-limiting, so
 it's a casual lock (like a phone passcode), not a defense against a
@@ -176,9 +190,28 @@ so nothing you said is lost even if it didn't map to a specific field.
 
 1. Install the updated `mayday-hub` plugin (see the zip that came with this).
 2. Go to **MayDay Co. → Jarvis Integration** in WP admin.
-3. Copy the **Endpoint URL** and **Shared secret** shown there into your env
-   as `WORDPRESS_API_URL` (just the site root, e.g. `https://maydayco.dog`)
-   and `WORDPRESS_API_KEY`.
+3. Copy the **Site URL** and **Shared secret** shown there into your env as
+   `WORDPRESS_API_URL` and `WORDPRESS_API_KEY`. This one key also unlocks
+   live pricing and live bookings below — it's the same connection.
+
+## Live pricing & bookings (no more stale numbers)
+
+Once `WORDPRESS_API_URL`/`WORDPRESS_API_KEY` are set (same setup as report
+cards, above), three more things work:
+
+- **`wordpress_pricing_read`** — the actual current prices from MayDay
+  Bookings → Pricing, live off the site. Ask "what do I charge for boarding
+  right now?" and it'll never be out of date with `business-context.md`.
+- **`wordpress_bookings_read`** — upgrades automatically from the basic ICS
+  feed to full detail (dollar amounts, dog names, per-booking breakdown) for
+  the next 45 days.
+- **`estimate_monthly_earnings`** — sums this month's already-*confirmed*
+  bookings' actual saved prices and compares to the ramped target. This is
+  explicitly a projection ("booked"), not the same number `pace_check` gives
+  you (which is what you've actually logged as earned) — Jarvis is told to
+  keep those two numbers distinct rather than blur them together.
+
+Nothing to configure beyond the one WordPress connection above.
 
 ## Calendar sync when a booking comes in
 
@@ -222,54 +255,98 @@ one-time. You already had a zero-setup fallback too: the plugin's ICS feed
 (**MayDay Bookings → Settings**) still works if you just want a quick
 read-only calendar subscription without any of this.
 
-## Text reminders
+## Drafting texts, emails, replies
 
-Text Jarvis (or tell it in the PWA) something like *"don't let me forget to
-give Millie's meds at 6pm"* — it'll text you back at 6pm America/Denver
-time. This needs a real Twilio account (small recurring cost, roughly
-$1-2/month for the number plus fractions of a cent per message) since actual
-SMS isn't free.
+This isn't a separate feature to set up — it's just what Jarvis does when
+you ask. "Draft a text to the Hendersons about their late pickup" gets you
+something ready to copy and send, written in your voice. There's a small
+**copy** link under any reply so you can grab it fast. Jarvis never sends
+anything itself (texts, emails, invoices) — it drafts, you send.
+
+## Invoices (Square, draft-only)
+
+Say "invoice Sarah Chen $68 for the virtual session" and Jarvis creates a
+**draft** invoice in Square — a real customer + order + invoice, sitting in
+DRAFT status. Nothing gets emailed or charged until you open your Square
+Dashboard and publish it yourself. This uses the same Square account already
+processing booking payments, just a different API credential.
 
 **Setup:**
 
-1. Create a [Twilio](https://twilio.com) account, buy a phone number.
-2. Set `TWILIO_ENABLED=true`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-   `TWILIO_PHONE_NUMBER` in env.
-3. Set `OWNER_PHONE_NUMBER` to your own number (E.164 format, e.g.
-   `+17205551234`) — this is where reminders get sent.
-4. Generate a random string for `CRON_SECRET` (e.g. `openssl rand -hex 24`).
-5. In your GitHub repo → **Settings → Secrets and variables → Actions**, add
-   two repo secrets: `CRON_SECRET` (same value as step 4) and
+1. Go to [developer.squareup.com](https://developer.squareup.com) → sign in
+   with your existing Square account → **Create an app** (or use an
+   existing one) → **Credentials** tab → copy the **Production** access
+   token (not sandbox, unless you want to test with fake money first).
+2. Same app → **Locations** tab → copy your **Location ID**.
+3. Set `SQUARE_ACCESS_TOKEN` and `SQUARE_LOCATION_ID` in env.
+   `SQUARE_ENVIRONMENT` defaults to `production`; set it to `sandbox` only
+   if you're testing with a sandbox token.
+
+Treat `SQUARE_ACCESS_TOKEN` like a password to your Square account — it can
+create real customers, orders, and invoices (draft-only here, but a leaked
+token isn't limited to what this app does with it). Standard env-var
+handling (never commit it, only in Vercel's encrypted vars) is what protects
+it, same as every other key.
+
+## Reminders (free push notifications)
+
+Tell Jarvis *"don't let me forget to give Millie's meds at 6pm"* and it'll
+push a notification to your phone at 6pm America/Denver time — no texting
+service, no recurring cost. Uses the Web Push standard (the same mechanism
+behind every site that asks "allow notifications?").
+
+**Setup:**
+
+1. Generate a VAPID keypair once:
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+   Set the public key as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and the private key
+   as `VAPID_PRIVATE_KEY` in env.
+2. Generate a random string for `CRON_SECRET` (e.g. `openssl rand -hex 24`).
+3. In your GitHub repo → **Settings → Secrets and variables → Actions**, add
+   two repo secrets: `CRON_SECRET` (same value as step 2) and
    `JARVIS_APP_URL` (your deployed URL, no trailing slash).
+4. Open the installed PWA, tap **🔔 Enable reminders** in the header, allow
+   notifications when the browser asks.
 
 That's it — `.github/workflows/reminders.yml` checks for due reminders every
-5 minutes and texts them, for free. (Vercel's own free-tier Cron only runs
+5 minutes and pushes them, for free. (Vercel's own free-tier Cron only runs
 once a day, which isn't precise enough for "at 6pm," so this uses GitHub
-Actions instead — same idea, just a scheduler that isn't rate-limited that
-way.)
+Actions instead.)
 
-Reminders are one-way: you ask Jarvis to remind you, it eventually texts
-you. It doesn't (yet) let you reply to that text and have Jarvis do
-anything with the reply — that's a possible future add if you want it.
+Notes:
+- **iPhone:** push notifications only work once the PWA is installed to your
+  home screen (Share → Add to Home Screen) — a regular Safari tab can't ask
+  for notification permission on iOS.
+- Multiple devices can each tap "Enable reminders" — a reminder pushes to
+  all of them.
+- Reminders are one-way: Jarvis eventually notifies you, you can't reply to
+  the notification itself and have it do anything.
 
 ## Texting Jarvis for real (separate from reminders)
 
-The PWA is the default and needs no third-party service. If you want to
-have an actual back-and-forth conversation over SMS instead of the app:
+The PWA is the default and needs no third-party service. If you want an
+actual back-and-forth conversation over real SMS instead of the app:
 
-1. Same Twilio setup as above.
-2. Point the number's **"A message comes in"** webhook at
+1. Create a [Twilio](https://twilio.com) account, buy a phone number
+   (small recurring cost — your call whether it's worth it).
+2. Set `TWILIO_ENABLED=true` and `TWILIO_AUTH_TOKEN` in env.
+3. Point the number's **"A message comes in"** webhook at
    `https://<your-deployment>/api/twilio/sms`.
 
 Each phone number gets its own conversation history (keyed as `sms:<number>`
-in the `conversations` table), separate from your PWA session.
+in the `conversations` table), separate from your PWA session. This is
+unrelated to reminders, which use free push notifications instead.
 
 ## Updating your business context
 
 Your plan will change. To update what Jarvis knows:
 
 1. Edit `content/business-context.md` directly (pricing changes, new
-   guardrails, phase updates, whatever).
+   guardrails, phase updates, whatever) — though for pricing specifically,
+   `wordpress_pricing_read` now pulls live numbers instead, so the doc
+   matters less for that one thing.
 2. If you also change the ramped monthly targets or plan phases, update the
    matching structured data in `lib/planData.ts`.
 3. Run `npm run seed:context` to push the new version to Supabase.
@@ -289,6 +366,7 @@ request time.
   stored in `check_ins`.
 - **Anytime:** ask "am I on pace?" — sums this month's logged transactions
   against that month's ramped target ($1,100 Aug → $2,100 Jan) and tells you
-  straight if you're ahead or behind.
+  straight if you're ahead or behind. Ask "what am I projected to make this
+  month?" for the separate booked-but-not-yet-earned number instead.
 
 Jarvis won't sugarcoat it. That's the point.

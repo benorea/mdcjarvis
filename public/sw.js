@@ -44,3 +44,25 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+// Reminders arrive here (sent from the cron job via lib/webpush.ts).
+self.addEventListener("push", (event) => {
+  let data = { title: "Jarvis", body: "" };
+  try {
+    if (event.data) data = event.data.json();
+  } catch {
+    // Non-JSON payload — fall back to the default title/empty body.
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Jarvis", {
+      body: data.body || "",
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(self.clients.openWindow("/"));
+});

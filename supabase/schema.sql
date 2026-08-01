@@ -54,9 +54,9 @@ create table if not exists check_ins (
 create index if not exists check_ins_type_created_idx
   on check_ins (type, created_at);
 
--- Text reminders ("don't let me forget to give Millie's meds at 6pm").
+-- Reminders ("don't let me forget to give Millie's meds at 6pm").
 -- remind_at is the true UTC instant (converted from America/Denver wall-clock
--- time at scheduling time); a cron job polls for due, unsent rows and texts them.
+-- time at scheduling time); a cron job polls for due, unsent rows and pushes them.
 create table if not exists reminders (
   id uuid primary key default gen_random_uuid(),
   message text not null,
@@ -68,3 +68,14 @@ create table if not exists reminders (
 
 create index if not exists reminders_due_idx
   on reminders (remind_at) where sent = false;
+
+-- Web Push subscriptions — one row per browser/device that's enabled
+-- notifications. A phone and a laptop both installing the PWA means two
+-- rows; reminders push to all of them.
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);

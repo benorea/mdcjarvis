@@ -20,6 +20,15 @@ function getSessionId(): string {
   return id;
 }
 
+// Push subscriptions need the VAPID public key as a raw byte array, not the
+// base64url string it's normally shared as.
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
 // Minimal ambient types so this compiles without dom-speech lib types.
 type SpeechRecognitionLike = {
   start: () => void;
@@ -93,6 +102,8 @@ export default function ChatUI() {
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<"unsupported" | "off" | "on" | "working">("off");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const sessionIdRef = useRef<string>("default");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -127,6 +138,17 @@ export default function ChatUI() {
       navigator.serviceWorker.register("/sw.js").catch(() => {
         // Non-fatal: app still works without offline shell caching.
       });
+
+      if ("PushManager" in window) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.pushManager.getSubscription())
+          .then((sub) => setNotifStatus(sub ? "on" : "off"))
+          .catch(() => setNotifStatus("off"));
+      } else {
+        setNotifStatus("unsupported");
+      }
+    } else {
+      setNotifStatus("unsupported");
     }
 
     const SpeechRecognitionCtor =
@@ -199,6 +221,46 @@ export default function ChatUI() {
     }
   }
 
+  async function enableNotifications() {
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapidKey) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Push notifications aren't configured yet (missing VAPID keys) — reminders can't be turned on until that's set up.",
+        },
+      ]);
+      return;
+    }
+
+    setNotifStatus("working");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotifStatus("off");
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+      });
+
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+
+      setNotifStatus("on");
+    } catch {
+      setNotifStatus("off");
+    }
+  }
+
   function startListening(e: React.PointerEvent<HTMLButtonElement>) {
     const recognition = recognitionRef.current;
     if (!recognition || listening) return;
@@ -266,14 +328,27 @@ export default function ChatUI() {
           <h1 className="text-lg font-semibold">Jarvis</h1>
           <p className="text-xs opacity-60">MayDay &amp; Co.</p>
         </div>
-        <label className="flex items-center gap-2 text-xs opacity-80">
-          <input
-            type="checkbox"
-            checked={speakReplies}
-            onChange={(e) => setSpeakReplies(e.target.checked)}
-          />
-          Speak replies
-        </label>
+        <div className="flex items-center gap-3">
+          {notifStatus !== "unsupported" && (
+            <button
+              type="button"
+              onClick={notifStatus === "off" ? enableNotifications : undefined}
+              disabled={notifStatus === "working" || notifStatus === "on"}
+              className="text-xs opacity-80 disabled:opacity-60"
+              title={notifStatus === "on" ? "Reminders will show up as notifications" : "Turn on reminder notifications"}
+            >
+              {notifStatus === "on" ? "🔔 Reminders on" : notifStatus === "working" ? "🔔 …" : "🔔 Enable reminders"}
+            </button>
+          )}
+          <label className="flex items-center gap-2 text-xs opacity-80">
+            <input
+              type="checkbox"
+              checked={speakReplies}
+              onChange={(e) => setSpeakReplies(e.target.checked)}
+            />
+            Speak replies
+          </label>
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
@@ -295,6 +370,21 @@ export default function ChatUI() {
               }`}
             >
               {m.content}
+              {m.role === "assistant" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(m.content).then(() => {
+                      setCopiedId(m.id);
+                      setTimeout(() => setCopiedId((id) => (id === m.id ? null : id)), 1500);
+                    });
+                  }}
+                  className="ml-2 align-middle text-xs opacity-40 hover:opacity-100"
+                  aria-label="Copy"
+                >
+                  {copiedId === m.id ? "copied" : "copy"}
+                </button>
+              )}
             </li>
           ))}
           {loading && (
