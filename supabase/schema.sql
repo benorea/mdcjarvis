@@ -53,3 +53,18 @@ create table if not exists check_ins (
 
 create index if not exists check_ins_type_created_idx
   on check_ins (type, created_at);
+
+-- Text reminders ("don't let me forget to give Millie's meds at 6pm").
+-- remind_at is the true UTC instant (converted from America/Denver wall-clock
+-- time at scheduling time); a cron job polls for due, unsent rows and texts them.
+create table if not exists reminders (
+  id uuid primary key default gen_random_uuid(),
+  message text not null,
+  remind_at timestamptz not null,
+  sent boolean not null default false,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists reminders_due_idx
+  on reminders (remind_at) where sent = false;

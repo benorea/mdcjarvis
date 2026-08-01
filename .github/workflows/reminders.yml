@@ -1,0 +1,19 @@
+name: Reminder check
+
+# Free stand-in for minute-level cron: Vercel's free Hobby plan only runs
+# scheduled functions once a day, which isn't precise enough for "text me
+# at 6pm". This hits Jarvis's cron endpoint every 5 minutes instead — free
+# on GitHub for a job this small.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll reminders endpoint
+        run: |
+          curl -fsS -X GET "${{ secrets.JARVIS_APP_URL }}/api/cron/reminders" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"
