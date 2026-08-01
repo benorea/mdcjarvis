@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Dashboard from "./Dashboard";
 
 type ToolCallLog = { name: string; ok: boolean };
 
@@ -19,6 +20,7 @@ type StatusData = {
   square: boolean;
   push: boolean;
   twilioSms: boolean;
+  voiceTranscription: boolean;
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -57,30 +59,6 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const raw = atob(b64);
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
-
-// iOS Safari's speech recognition passes feature detection (the constructor
-// exists) but silently does nothing when the site is running as an
-// installed home-screen app — a known Apple platform limitation, not
-// something fixable here. It only works in a regular Safari tab. Detect
-// that specific broken combo so we can say so instead of a silent hang.
-function isIosInstalledPwa(): boolean {
-  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  const isStandalone =
-    window.matchMedia?.("(display-mode: standalone)").matches || (navigator as any).standalone === true;
-  return isIos && isStandalone;
-}
-
-// Minimal ambient types so this compiles without dom-speech lib types.
-type SpeechRecognitionLike = {
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onend: (() => void) | null;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-};
 
 function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState("");
@@ -141,15 +119,19 @@ export default function ChatUI() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"unsupported" | "off" | "on" | "working">("off");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "dashboard">("chat");
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusData, setStatusData] = useState<StatusData | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const sessionIdRef = useRef<string>("default");
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const pendingStopRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   async function loadHistory() {
@@ -195,16 +177,13 @@ export default function ChatUI() {
       setNotifStatus("unsupported");
     }
 
-    const SpeechRecognitionCtor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognitionCtor) {
-      setVoiceSupported(true);
-      const recognition: SpeechRecognitionLike = new SpeechRecognitionCtor();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
-      recognitionRef.current = recognition;
-    }
+    // Recording + server-side transcription, not the browser's own speech
+    // recognition — that API is inconsistent enough across platforms
+    // (notably: silently does nothing in an installed iOS PWA) that this is
+    // the only approach that behaves the same way everywhere.
+    setVoiceSupported(
+      typeof navigator.mediaDevices?.getUserMedia === "function" && typeof MediaRecorder !== "undefined"
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -321,60 +300,85 @@ export default function ChatUI() {
     }
   }
 
-  function startListening(e: React.PointerEvent<HTMLButtonElement>) {
-    const recognition = recognitionRef.current;
-    if (!recognition || listening) return;
+  async function transcribeAndSend(blob: Blob) {
+    if (blob.size < 500) return; // near-empty — an accidental tap, not a real recording
 
-    if (isIosInstalledPwa()) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "Voice doesn't work in the installed app on iPhone — that's an Apple limitation on installed home-screen apps, not something in here. Open this same site in a regular Safari tab instead (not the installed icon) and voice will work there. Typing works fine either way.",
-        },
-      ]);
-      return;
-    }
-
-    // Without this, a slight layout shift under the finger (or even normal
-    // touch jitter) fires pointerleave and yanks the mic back off a few ms
-    // after it started. Capturing the pointer ties all further events for
-    // this touch/click to this button regardless of where it physically is.
-    e.currentTarget.setPointerCapture(e.pointerId);
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript;
-      if (transcript) sendMessage(transcript);
-    };
-    recognition.onerror = (event: any) => {
-      setListening(false);
-      const reason = event?.error || "unknown error";
-      if (reason === "no-speech" || reason === "aborted") return;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            reason === "not-allowed" || reason === "service-not-allowed"
-              ? "Mic access is blocked — check your browser/site permissions and try again."
-              : `Mic error: ${reason}`,
-        },
-      ]);
-    };
-    recognition.onend = () => setListening(false);
-
+    setTranscribing(true);
     try {
-      setListening(true);
-      recognition.start();
-    } catch {
-      setListening(false);
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+
+      if (res.status === 401) {
+        setAuthed(false);
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Transcription failed");
+
+      const transcript = String(data.transcript || "").trim();
+      if (!transcript) {
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: "assistant", content: "Didn't catch anything in that recording — try again?" },
+        ]);
+        return;
+      }
+      await sendMessage(transcript);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Voice note error: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ]);
+    } finally {
+      setTranscribing(false);
     }
   }
 
-  function stopListening(e?: React.PointerEvent<HTMLButtonElement>) {
+  async function startRecording(e: React.PointerEvent<HTMLButtonElement>) {
+    if (listening) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pendingStopRef.current = false;
+    setListening(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) audioChunksRef.current.push(ev.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setListening(false);
+        transcribeAndSend(blob);
+      };
+
+      recorder.start();
+      // Finger already lifted before the mic was even ready — stop right away.
+      if (pendingStopRef.current) recorder.stop();
+    } catch {
+      setListening(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Mic access is blocked — check your browser/site permissions and try again.",
+        },
+      ]);
+    }
+  }
+
+  function stopRecording(e?: React.PointerEvent<HTMLButtonElement>) {
     if (e) {
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
@@ -382,8 +386,12 @@ export default function ChatUI() {
         // already released — fine
       }
     }
-    recognitionRef.current?.stop();
-    setListening(false);
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+    } else {
+      pendingStopRef.current = true;
+    }
   }
 
   if (!authChecked) {
@@ -402,6 +410,13 @@ export default function ChatUI() {
           <p className="text-xs opacity-60">MayDay &amp; Co.</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setView(view === "chat" ? "dashboard" : "chat")}
+            className="text-xs opacity-80"
+          >
+            {view === "chat" ? "📊 Dashboard" : "💬 Chat"}
+          </button>
           <button type="button" onClick={openStatus} className="text-xs opacity-80" title="What's connected right now">
             ⓘ Status
           </button>
@@ -445,7 +460,7 @@ export default function ChatUI() {
 
             <div className="mb-1 text-xs font-semibold opacity-60">This device</div>
             <ul className="mb-3 space-y-1">
-              <li>{voiceSupported ? "✅" : "❌"} Voice input {voiceSupported ? "supported" : "not supported in this browser"}</li>
+              <li>{voiceSupported ? "✅" : "❌"} Voice notes {voiceSupported ? "supported" : "need mic access, not available here"}</li>
               <li>
                 {notifStatus === "on" ? "✅" : notifStatus === "unsupported" ? "❌" : "⚪"} Notifications:{" "}
                 {notifStatus === "on" ? "on" : notifStatus === "unsupported" ? "not supported here" : "off"}
@@ -464,6 +479,7 @@ export default function ChatUI() {
                 <li>{statusData.calendarWebhook ? "✅" : "❌"} Calendar auto-sync on booking</li>
                 <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
                 <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
+                <li>{statusData.voiceTranscription ? "✅" : "❌"} Voice note transcription</li>
               </ul>
             )}
             {!statusLoading && !statusData && <p className="opacity-60">Couldn&apos;t load status.</p>}
@@ -471,6 +487,12 @@ export default function ChatUI() {
         </div>
       )}
 
+      {view === "dashboard" ? (
+        <div className="flex-1 overflow-y-auto">
+          <Dashboard />
+        </div>
+      ) : (
+        <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="mx-auto max-w-sm pt-16 text-center text-sm opacity-60">
@@ -521,6 +543,11 @@ export default function ChatUI() {
               )}
             </li>
           ))}
+          {transcribing && (
+            <li className="mr-auto max-w-[85%] rounded-2xl bg-white/80 px-4 py-2 text-sm opacity-60 dark:bg-white/10">
+              transcribing voice note…
+            </li>
+          )}
           {loading && (
             <li className="mr-auto max-w-[85%] rounded-2xl bg-white/80 px-4 py-2 text-sm opacity-60 dark:bg-white/10">
               thinking…
@@ -539,14 +566,15 @@ export default function ChatUI() {
         {voiceSupported && (
           <button
             type="button"
-            onPointerDown={startListening}
-            onPointerUp={stopListening}
-            onPointerCancel={stopListening}
+            onPointerDown={startRecording}
+            onPointerUp={stopRecording}
+            onPointerCancel={stopRecording}
+            disabled={transcribing}
             style={{ touchAction: "none" }}
-            className={`flex shrink-0 select-none items-center justify-center rounded-full text-sm ${
+            className={`flex shrink-0 select-none items-center justify-center rounded-full text-sm disabled:opacity-40 ${
               listening ? "h-10 w-10 animate-pulse bg-red-500 text-white" : "h-10 w-10 bg-sage/20"
             }`}
-            aria-label="Push to talk"
+            aria-label="Record a voice note"
           >
             {listening ? "●" : "🎤"}
           </button>
@@ -565,6 +593,8 @@ export default function ChatUI() {
           Send
         </button>
       </form>
+        </>
+      )}
     </div>
   );
 }

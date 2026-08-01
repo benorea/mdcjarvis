@@ -21,5 +21,6 @@ export async function GET(req: NextRequest) {
     square: squareConfigured(),
     push: pushConfigured(),
     twilioSms: process.env.TWILIO_ENABLED === "true",
+    voiceTranscription: Boolean(process.env.OPENAI_API_KEY),
   });
 }

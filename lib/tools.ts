@@ -128,6 +128,12 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "training_progress_read",
+    description:
+      "Reads real certification progress (CPDT-KA hours logged vs. the 300-hour requirement, plus PCT-A/CTT-A/CBCC-KA numbers) from the live Training Log. Use this instead of guessing when asked how close Ashley is to certified. Only works if WORDPRESS_API_URL/WORDPRESS_API_KEY are configured.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "submit_report_card",
     description:
       `Writes a dog report card into the mayday-hub site, the same as the staff wizard would. Use this when Ashley describes a dog's day or walk (typically from a voice note) and wants it logged.
@@ -272,6 +278,9 @@ export async function runTool(
 
     case "estimate_monthly_earnings":
       return estimateMonthlyEarnings();
+
+    case "training_progress_read":
+      return trainingProgressRead();
 
     case "submit_report_card":
       return submitReportCard(input);
@@ -481,6 +490,21 @@ async function wordpressPricingRead(): Promise<ToolResult> {
     return ok({ configured: true, ...data });
   } catch (err) {
     return fail(`Could not read live pricing: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function trainingProgressRead(): Promise<ToolResult> {
+  if (!wordpressApiConfigured()) {
+    return ok({
+      configured: false,
+      message: "Training log isn't connected. Set WORDPRESS_API_URL and WORDPRESS_API_KEY in env.",
+    });
+  }
+  try {
+    const data = await wordpressApiGet("training-summary");
+    return ok({ configured: true, ...data });
+  } catch (err) {
+    return fail(`Could not read training log: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

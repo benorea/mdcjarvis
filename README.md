@@ -21,7 +21,8 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
   `log_revenue`, `pace_check`, `daily_task`, `weekly_review`,
   `monthly_close`, `submit_report_card`, `wordpress_pricing_read`,
   `wordpress_bookings_read`, `estimate_monthly_earnings`,
-  `schedule_reminder`, `create_invoice`, `google_calendar_read`.
+  `training_progress_read`, `schedule_reminder`, `create_invoice`,
+  `google_calendar_read`.
 - `lib/planData.ts` — the ramped monthly targets, plan phases, and check-in
   questions, as structured data the tools compute against.
 - `lib/reportCardFields.ts` — the exact field vocabulary the WordPress report
@@ -40,9 +41,12 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
 - `content/business-context.md` — the full operating plan in prose. This is
   what actually grounds Jarvis. **Edit this file when your plan changes.**
 - `components/ChatUI.tsx` — the PWA chat UI: password lock screen, text
-  input, push-to-talk mic button, spoken replies, copy button on replies
-  (handy for drafted texts), notification opt-in, and history that survives
-  page reloads.
+  input, voice notes, spoken replies, copy button on replies (handy for
+  drafted texts), notification opt-in, tool-call activity chips, a Status
+  panel, and history that survives page reloads.
+- `components/Dashboard.tsx` — the summary view (today's task, money,
+  bookings, reminders, content theme, training progress), toggled from the
+  chat header.
 - `app/api/twilio/sms/route.ts` — inbound-SMS webhook, off by default
   (`TWILIO_ENABLED=false`).
 - `app/api/webhooks/booking/route.ts` — receives booking-confirmed events
@@ -50,6 +54,11 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
 - `app/api/cron/reminders/route.ts` — polled by GitHub Actions every 5
   minutes; pushes any due reminders as notifications.
 - `app/api/push/subscribe/route.ts` — stores a device's push subscription.
+- `app/api/transcribe/route.ts` — voice note → text via OpenAI's Whisper API.
+- `app/api/status/route.ts` — which integrations are actually connected
+  (booleans only, never leaks key values) — powers the Status panel.
+- `app/api/dashboard/route.ts` — aggregates everything the Dashboard shows,
+  reusing the same tool handlers chat uses.
 - `supabase/schema.sql` — `business_context`, `conversations`,
   `transactions`, `check_ins`, `reminders`, `push_subscriptions`.
 - `.github/workflows/reminders.yml` — the free 5-minute reminder poller.
@@ -131,16 +140,25 @@ want a polished home-screen icon.
 
 ## Using voice
 
-Press and hold the 🎤 button to talk (push-to-talk — release to send what it
-heard). Toggle **Speak replies** in the header for spoken answers. Both use
-the free Web Speech API — zero extra cost, and no audio leaves your device
-except as the text transcript sent to `/api/chat`.
+Press and hold the 🎤 button to record a voice note — release to send it.
+It's recorded on-device (`MediaRecorder`), uploaded, and transcribed via
+`/api/transcribe`, then handled exactly like a typed message. Toggle
+**Speak replies** in the header for spoken answers back (browser
+`speechSynthesis`, free, no setup).
 
-If push-to-talk doesn't seem to work on a given phone/browser: Safari on
-iPhone doesn't support the Web Speech API's speech recognition at all (the
-mic button won't show), and if the mic button shows but errors immediately,
-it'll now say why in the chat (e.g. mic permission blocked) instead of
-silently failing.
+This deliberately isn't the browser's built-in speech recognition API —
+that one is inconsistent enough across platforms (it silently does nothing
+in an installed iOS PWA, a real Apple limitation with no code-level fix) to
+not be worth depending on. Record + transcribe works identically on every
+device, including the installed iPhone app, at the cost of needing
+`OPENAI_API_KEY` set (see below) and a beat of upload/transcription latency
+instead of instant recognition.
+
+**Setup:** get a key at [platform.openai.com](https://platform.openai.com)
+→ API keys, set `OPENAI_API_KEY` in env. Costs ~$0.006/minute of audio —
+call it a few cents a month at personal-use volume. Voice notes don't work
+at all until this is set (the mic button still shows, but you'll get a
+clear "not configured" message instead of it silently failing).
 
 ## Security — what's actually protecting your keys
 
@@ -210,8 +228,22 @@ cards, above), three more things work:
   explicitly a projection ("booked"), not the same number `pace_check` gives
   you (which is what you've actually logged as earned) — Jarvis is told to
   keep those two numbers distinct rather than blur them together.
+- **`training_progress_read`** — real CPDT-KA hours logged (vs. the 300-hour
+  requirement) and the other cert numbers, straight from the Training Log
+  module — same math the plugin's own progress page uses.
 
 Nothing to configure beyond the one WordPress connection above.
+
+## Dashboard (the "what's actually going on" view)
+
+Tap **📊 Dashboard** in the header to flip from chat to a summary view:
+today's one task, reminders due today, this month's money (logged vs.
+booked-but-not-earned vs. target), upcoming bookings, this month's content
+theme, and CPDT-KA progress. It's one API call (`/api/dashboard`) that
+reuses the exact same tool logic chat uses — so the dashboard and Jarvis's
+answers in chat never quietly disagree with each other. Same password gate
+as everything else; sections that aren't configured yet just say so instead
+of showing broken/blank data.
 
 ## Calendar sync when a booking comes in
 

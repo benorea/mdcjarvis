@@ -124,3 +124,33 @@ export const MONTHLY_CLOSE_QUESTIONS = [
   "Any guardrail close to being broken (gear spend vs. gear P&L, December capacity, trading cap)?",
   "One sentence: what's the single most important thing next month?",
 ];
+
+// From the content calendar in business-context.md — theme by calendar
+// month (1-12), independent of the 6-month plan phases above so it keeps
+// working past January too.
+export const CONTENT_THEMES: Record<number, string> = {
+  1: "Train Your Dog Month — the biggest training push of the year",
+  2: "Love & dental health",
+  3: "Reactivity",
+  4: "Bite prevention",
+  5: "Anxiety awareness / events",
+  6: "Summer safety",
+  7: "Fireworks",
+  8: "DOGust",
+  9: "Separation anxiety / back-to-routine",
+  10: "Spooky season / cooperative care",
+  11: "Holiday booking urgency",
+  12: "Peak occupancy",
+};
+
+export const CONTENT_SERIES = [
+  "Decompression Diaries",
+  "Making Their Gear",
+  "Myth on Monday",
+  "Study With Me (CPDT-KA)",
+  "Ask a Trainer",
+];
+
+export function contentThemeForMonth(monthNum: number): string {
+  return CONTENT_THEMES[monthNum] || "No theme set for this month";
+}
