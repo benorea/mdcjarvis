@@ -3,6 +3,7 @@ import { isAuthed } from "@/lib/auth";
 import { googleCalendarConfigured } from "@/lib/googleCalendar";
 import { pushConfigured } from "@/lib/webpush";
 import { squareConfigured } from "@/lib/square";
+import { sheetsConfigured } from "@/lib/googleSheets";
 
 export const runtime = "nodejs";
 
@@ -22,5 +23,6 @@ export async function GET(req: NextRequest) {
     push: pushConfigured(),
     twilioSms: process.env.TWILIO_ENABLED === "true",
     voiceTranscription: Boolean(process.env.OPENAI_API_KEY),
+    bookkeepingSheet: sheetsConfigured(),
   });
 }

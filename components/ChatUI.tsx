@@ -21,6 +21,7 @@ type StatusData = {
   push: boolean;
   twilioSms: boolean;
   voiceTranscription: boolean;
+  bookkeepingSheet: boolean;
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -37,6 +38,12 @@ const TOOL_LABELS: Record<string, string> = {
   schedule_reminder: "Scheduling reminder",
   create_invoice: "Creating draft invoice",
   google_calendar_read: "Reading calendar",
+  training_progress_read: "Reading training log",
+  bookkeeping_log: "Logging to the sheet",
+  bookkeeping_read: "Reading the sheet",
+  save_content_idea: "Saving content idea",
+  log_post_performance: "Logging post performance",
+  list_content_ideas: "Reading content ideas",
 };
 
 const SESSION_KEY = "jarvis_session_id";
@@ -480,6 +487,7 @@ export default function ChatUI() {
                 <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
                 <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
                 <li>{statusData.voiceTranscription ? "✅" : "❌"} Voice note transcription</li>
+                <li>{statusData.bookkeepingSheet ? "✅" : "❌"} Shared bookkeeping sheet</li>
               </ul>
             )}
             {!statusLoading && !statusData && <p className="opacity-60">Couldn&apos;t load status.</p>}

@@ -32,12 +32,13 @@ export async function GET(req: NextRequest) {
 
   const monthNum = Number(todayInBusinessTimezone().slice(5, 7));
 
-  const [dailyTask, paceCheck, monthlyEarnings, bookings, training, reminders] = await Promise.all([
+  const [dailyTask, paceCheck, monthlyEarnings, bookings, training, contentIdeas, reminders] = await Promise.all([
     runTool("daily_task", {}),
     runTool("pace_check", {}),
     runTool("estimate_monthly_earnings", {}),
     runTool("wordpress_bookings_read", {}),
     runTool("training_progress_read", {}),
+    runTool("list_content_ideas", { status: "idea" }),
     remindersToday(),
   ]);
 
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
     monthlyEarnings: monthlyEarnings.data,
     bookings: bookings.data,
     training: training.data,
+    contentIdeas: contentIdeas.data,
     remindersToday: reminders,
     contentTheme: contentThemeForMonth(monthNum),
     timezone: BUSINESS_TIMEZONE,

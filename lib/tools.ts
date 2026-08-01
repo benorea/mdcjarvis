@@ -15,6 +15,7 @@ import { googleCalendarConfigured, listUpcomingEvents } from "./googleCalendar";
 import { localToUtcDate, todayInBusinessTimezone, lastDayOfMonth } from "./timezone";
 import { pushConfigured } from "./webpush";
 import { squareConfigured, createDraftInvoice } from "./square";
+import { sheetsConfigured, appendRow, readRange } from "./googleSheets";
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
@@ -132,6 +133,71 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     description:
       "Reads real certification progress (CPDT-KA hours logged vs. the 300-hour requirement, plus PCT-A/CTT-A/CBCC-KA numbers) from the live Training Log. Use this instead of guessing when asked how close Ashley is to certified. Only works if WORDPRESS_API_URL/WORDPRESS_API_KEY are configured.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "bookkeeping_log",
+    description:
+      "Appends one row to the shared Google Sheet Ashley uses for full bookkeeping (revenue, expenses, categories — the broader picture beyond what log_revenue/pace_check track for the $10k goal specifically). Use this whenever she mentions an expense, or wants something noted in 'the sheet' specifically rather than just the daily revenue log. Only works if GOOGLE_SHEETS_ID and the Google OAuth env vars are configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD. Defaults to today (America/Denver) if omitted." },
+        type: { type: "string", enum: ["revenue", "expense"] },
+        category: { type: "string", description: "e.g. 'boarding', 'gear materials', 'software', 'Etsy fees'." },
+        amount: { type: "number", description: "Dollars. Always positive — the type field says which direction." },
+        note: { type: "string", description: "Optional context." },
+      },
+      required: ["type", "category", "amount"],
+    },
+  },
+  {
+    name: "bookkeeping_read",
+    description:
+      "Reads rows from the shared Google Sheet's Transactions tab (or another tab/range if given) so you can answer questions grounded in what's actually in the sheet. Only works if GOOGLE_SHEETS_ID and the Google OAuth env vars are configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        range: { type: "string", description: "Optional. Defaults to 'Transactions!A:E'. Use A1 notation, e.g. 'Transactions!A1:E50'." },
+      },
+    },
+  },
+  {
+    name: "save_content_idea",
+    description:
+      "Saves a content idea for later. Use this when Ashley says 'log that idea' or when you generate one worth keeping during a brainstorm. Ground generated ideas in the actual three pillars (Transformation/Craft/Science) and five recurring series from the business plan — don't invent generic viral-trend claims, there's no real trend data source here.",
+    input_schema: {
+      type: "object",
+      properties: {
+        idea: { type: "string", description: "The idea itself, plainly stated." },
+        pillar: { type: "string", enum: ["transformation", "craft", "science"] },
+        series: { type: "string", description: "One of the five recurring series, if it fits one." },
+      },
+      required: ["idea"],
+    },
+  },
+  {
+    name: "log_post_performance",
+    description:
+      "Records how a real posted piece of content actually performed, in Ashley's own words (views, saves, conversions, whatever she reports). This builds a REAL performance history over time — use list_content_ideas later to ground future suggestions in what's actually worked, instead of guessing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        description: { type: "string", description: "Which post/content this is, e.g. 'the Millie decompression walk reel'." },
+        performance_note: { type: "string", description: "What Ashley reported, e.g. '40k views, high saves, two DMs asking about boarding'." },
+      },
+      required: ["description", "performance_note"],
+    },
+  },
+  {
+    name: "list_content_ideas",
+    description:
+      "Lists saved content ideas, optionally filtered by status. Use this to check what's already been suggested (avoid repeating ideas) or to pull real logged performance history before brainstorming new ones.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["idea", "drafted", "posted"], description: "Optional filter." },
+      },
+    },
   },
   {
     name: "submit_report_card",
@@ -282,6 +348,21 @@ export async function runTool(
     case "training_progress_read":
       return trainingProgressRead();
 
+    case "bookkeeping_log":
+      return bookkeepingLog(input);
+
+    case "bookkeeping_read":
+      return bookkeepingRead(input);
+
+    case "save_content_idea":
+      return saveContentIdea(input);
+
+    case "log_post_performance":
+      return logPostPerformance(input);
+
+    case "list_content_ideas":
+      return listContentIdeas(input);
+
     case "submit_report_card":
       return submitReportCard(input);
 
@@ -319,6 +400,14 @@ async function logRevenue(input: Record<string, unknown>): Promise<ToolResult> {
   });
 
   if (error) return fail(error.message);
+
+  // Best-effort mirror to the shared bookkeeping sheet — this is a nice-to-have
+  // copy for her to see/edit directly, never a reason to fail the actual log.
+  if (sheetsConfigured()) {
+    appendRow("Transactions!A:E", [date, "revenue", stream, amount, note || ""]).catch((err) => {
+      console.error("sheet mirror for log_revenue failed", err);
+    });
+  }
 
   const pace = await paceCheck({ month: date.slice(0, 7) });
   return ok({ logged: { amount, stream, date, note }, pace: pace.data });
@@ -506,6 +595,115 @@ async function trainingProgressRead(): Promise<ToolResult> {
   } catch (err) {
     return fail(`Could not read training log: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+async function bookkeepingLog(input: Record<string, unknown>): Promise<ToolResult> {
+  if (!sheetsConfigured()) {
+    return ok({
+      configured: false,
+      message: "The shared bookkeeping sheet isn't connected. Set GOOGLE_SHEETS_ID (plus the Google OAuth env vars — see README) to enable this.",
+    });
+  }
+
+  const type = input.type === "expense" ? "expense" : input.type === "revenue" ? "revenue" : "";
+  const category = String(input.category || "").trim();
+  const amount = Number(input.amount);
+  const date = typeof input.date === "string" && input.date ? input.date : todayInBusinessTimezone();
+  const note = typeof input.note === "string" ? input.note : "";
+
+  if (!type) return fail("type must be 'revenue' or 'expense'");
+  if (!category) return fail("category is required");
+  if (!Number.isFinite(amount) || amount <= 0) return fail("amount must be a positive number");
+
+  try {
+    await appendRow("Transactions!A:E", [date, type, category, amount, note]);
+    return ok({ logged: true, date, type, category, amount, note });
+  } catch (err) {
+    return fail(`Could not write to the sheet: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function bookkeepingRead(input: Record<string, unknown>): Promise<ToolResult> {
+  if (!sheetsConfigured()) {
+    return ok({
+      configured: false,
+      message: "The shared bookkeeping sheet isn't connected. Set GOOGLE_SHEETS_ID (plus the Google OAuth env vars — see README) to enable this.",
+    });
+  }
+
+  const range = typeof input.range === "string" && input.range ? input.range : "Transactions!A:E";
+
+  try {
+    const rows = await readRange(range);
+    return ok({ configured: true, range, rows });
+  } catch (err) {
+    return fail(`Could not read the sheet: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function saveContentIdea(input: Record<string, unknown>): Promise<ToolResult> {
+  const idea = String(input.idea || "").trim();
+  if (!idea) return fail("idea is required");
+
+  const supabase = getSupabaseServer();
+  const { error } = await supabase.from("content_ideas").insert({
+    idea,
+    pillar: typeof input.pillar === "string" ? input.pillar : null,
+    series: typeof input.series === "string" ? input.series : null,
+  });
+
+  if (error) return fail(error.message);
+  return ok({ saved: true, idea });
+}
+
+async function logPostPerformance(input: Record<string, unknown>): Promise<ToolResult> {
+  const description = String(input.description || "").trim();
+  const performanceNote = String(input.performance_note || "").trim();
+  if (!description) return fail("description is required");
+  if (!performanceNote) return fail("performance_note is required");
+
+  const supabase = getSupabaseServer();
+  // Try to attach this to an existing matching idea (best-effort text match); otherwise log it as its own row.
+  const { data: existing } = await supabase
+    .from("content_ideas")
+    .select("id")
+    .ilike("idea", `%${description}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("content_ideas")
+      .update({ status: "posted", performance_note: performanceNote, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) return fail(error.message);
+    return ok({ logged: true, matched_existing_idea: true, description, performance_note: performanceNote });
+  }
+
+  const { error } = await supabase.from("content_ideas").insert({
+    idea: description,
+    status: "posted",
+    performance_note: performanceNote,
+  });
+  if (error) return fail(error.message);
+  return ok({ logged: true, matched_existing_idea: false, description, performance_note: performanceNote });
+}
+
+async function listContentIdeas(input: Record<string, unknown>): Promise<ToolResult> {
+  const supabase = getSupabaseServer();
+  let query = supabase
+    .from("content_ideas")
+    .select("idea, pillar, series, status, performance_note, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (typeof input.status === "string" && input.status) {
+    query = query.eq("status", input.status);
+  }
+
+  const { data, error } = await query;
+  if (error) return fail(error.message);
+  return ok({ ideas: data || [] });
 }
 
 async function estimateMonthlyEarnings(): Promise<ToolResult> {

@@ -8,6 +8,7 @@ type DashboardData = {
   monthlyEarnings: any;
   bookings: any;
   training: any;
+  contentIdeas: any;
   remindersToday: { message: string; remind_at: string; sent: boolean }[];
   contentTheme: string;
   timezone: string;
@@ -147,8 +148,21 @@ export default function Dashboard() {
         )}
       </Card>
 
-      <Card title="Content idea">
+      <Card title="Content">
         <p className="text-sm">This month's theme: <strong>{data.contentTheme}</strong></p>
+        {(data.contentIdeas?.ideas || []).length > 0 && (
+          <>
+            <p className="mb-1 mt-2 text-xs font-semibold opacity-60">Saved ideas</p>
+            <ul className="space-y-1 text-sm">
+              {data.contentIdeas.ideas.slice(0, 6).map((i: any, idx: number) => (
+                <li key={idx}>
+                  {i.idea}
+                  {i.series && <span className="opacity-60"> · {i.series}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </Card>
 
       <Card title="Training / certification">

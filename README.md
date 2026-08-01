@@ -21,15 +21,16 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
   `log_revenue`, `pace_check`, `daily_task`, `weekly_review`,
   `monthly_close`, `submit_report_card`, `wordpress_pricing_read`,
   `wordpress_bookings_read`, `estimate_monthly_earnings`,
-  `training_progress_read`, `schedule_reminder`, `create_invoice`,
-  `google_calendar_read`.
+  `training_progress_read`, `bookkeeping_log`, `bookkeeping_read`,
+  `save_content_idea`, `log_post_performance`, `list_content_ideas`,
+  `schedule_reminder`, `create_invoice`, `google_calendar_read`.
 - `lib/planData.ts` — the ramped monthly targets, plan phases, and check-in
   questions, as structured data the tools compute against.
 - `lib/reportCardFields.ts` — the exact field vocabulary the WordPress report
   card system understands, mirrored from the plugin. Claude is instructed to
   use only these values and never invent one.
-- `lib/googleCalendar.ts` — Google Calendar read/write via a personal OAuth
-  refresh token.
+- `lib/googleCalendar.ts` / `lib/googleSheets.ts` — Google Calendar and
+  Sheets, same personal OAuth refresh token (needs both scopes granted).
 - `lib/square.ts` — Square Orders + Invoices (DRAFT only — no publish/send
   capability exists in this file by design).
 - `lib/webpush.ts` — free push-notification delivery (VAPID), used for
@@ -319,6 +320,56 @@ create real customers, orders, and invoices (draft-only here, but a leaked
 token isn't limited to what this app does with it). Standard env-var
 handling (never commit it, only in Vercel's encrypted vars) is what protects
 it, same as every other key.
+
+## Bookkeeping (shared Google Sheet)
+
+Jarvis can read and write directly to a Google Sheet you both work off of —
+say "log a $40 gear materials expense" or "what's in the sheet this month"
+and it uses `bookkeeping_log`/`bookkeeping_read`. Every `log_revenue` entry
+(the daily scoreboard tool) also mirrors into the same sheet automatically,
+best-effort — so the sheet ends up with everything: revenue *and* expenses,
+in one place you can open and edit by hand any time.
+
+This is deliberately separate from the fast Supabase-backed pace tracking
+(`pace_check`/`log_revenue`) that the $10k goal math depends on — that stays
+instant and reliable. The Sheet is the fuller shared ledger for the broader
+bookkeeping picture (expenses, categories, whatever you want in it),
+consistent with how your existing `mayday-cfo-tracker.xlsx` was structured.
+
+**Setup:**
+
+1. Create a Google Sheet (or reuse/convert your existing CFO tracker). Add a
+   tab named exactly **Transactions** with header row: `Date | Type |
+   Category | Amount | Note`.
+2. Grab the spreadsheet ID from its URL —
+   `docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit` — set it as
+   `GOOGLE_SHEETS_ID`.
+3. If you haven't already set up Google Calendar (above), do that OAuth
+   flow now and make sure to select **both** scopes at the "select scope"
+   step in the OAuth Playground: `.../auth/calendar` **and**
+   `.../auth/spreadsheets`. If you *already* did the Calendar setup with
+   only the calendar scope, you'll need to redo just the "get a refresh
+   token" step (step 2 under Calendar sync) with both scopes checked, and
+   swap in the new refresh token — the Client ID/Secret stay the same.
+
+One Google connection powers both Calendar and Sheets — no separate
+project or billing.
+
+## Content ideas & performance tracking
+
+Ask Jarvis to brainstorm and it generates ideas grounded in your actual
+three content pillars (Transformation/Craft/Science), the five recurring
+series, and the current month's theme — not invented "trending sounds" or
+fake viral claims, since there's no real social-trend data source wired in
+here. Say "log that idea" to save one (`save_content_idea`).
+
+The part that actually gets smarter over time: tell Jarvis how something
+performed after you post it — *"the Millie decompression reel hit 40k
+views, tons of saves"* — and it's recorded (`log_post_performance`). Ask
+"what's actually worked before?" and it pulls that real history
+(`list_content_ideas`) instead of guessing. No setup needed, no external
+service — this is all Supabase (`content_ideas` table), same as everything
+else that's on by default.
 
 ## Reminders (free push notifications)
 

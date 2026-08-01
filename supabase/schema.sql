@@ -79,3 +79,22 @@ create table if not exists push_subscriptions (
   auth text not null,
   created_at timestamptz not null default now()
 );
+
+-- Content ideas + a REAL performance history (things Ashley actually told
+-- Jarvis performed well/badly), so future suggestions can be grounded in
+-- what's actually worked instead of invented "trend" claims. status tracks
+-- an idea from conception through posted; performance_note is filled in
+-- after the fact via log_post_performance.
+create table if not exists content_ideas (
+  id uuid primary key default gen_random_uuid(),
+  idea text not null,
+  pillar text, -- 'transformation' | 'craft' | 'science', loosely — not enforced
+  series text, -- one of the five recurring series, if it fits one
+  status text not null default 'idea' check (status in ('idea', 'drafted', 'posted')),
+  performance_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists content_ideas_status_idx
+  on content_ideas (status, created_at desc);
