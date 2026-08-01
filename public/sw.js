@@ -1,5 +1,5 @@
-const CACHE_NAME = "jarvis-shell-v1";
-const SHELL_ASSETS = ["/", "/manifest.json", "/icon.svg"];
+const CACHE_NAME = "jarvis-shell-v2";
+const SHELL_ASSETS = ["/manifest.json", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -21,7 +21,12 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first for API calls, cache-first for the app shell.
+// API calls: untouched, always hit the network.
+// The page itself (navigations): network-first, so a new deploy is visible
+// on the very next load instead of possibly serving a stale cached shell
+// with old env vars/behavior baked in. Falls back to cache only if offline.
+// Everything else (hashed, content-addressed JS/CSS chunks): cache-first —
+// safe and fast, since their URL changes whenever their content does.
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -31,16 +36,27 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetchPromise = fetch(request)
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
         .then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           return response;
         })
-        .catch(() => cached);
-      return cached || fetchPromise;
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        return response;
+      });
     })
   );
 });
