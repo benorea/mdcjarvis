@@ -221,7 +221,7 @@ export async function runTool(
       return checkIn("monthly", MONTHLY_CLOSE_QUESTIONS, input);
 
     case "google_calendar_read":
-      return await googleCalendarRead();
+      return googleCalendarRead();
 
     case "wordpress_bookings_read":
       return wordpressBookingsRead();

@@ -34,6 +34,18 @@ function toLocalIso(mysqlDateTime: string): string {
   return mysqlDateTime.trim().replace(" ", "T");
 }
 
+/**
+ * Google Calendar requires an IANA zone name (e.g. "America/Denver"), not a
+ * raw UTC offset. wp_timezone_string() returns a plain offset like "-06:00"
+ * if the WordPress site is configured with a manual UTC offset instead of a
+ * named city — fall back to the business's actual timezone in that case
+ * rather than sending Google something it'll reject.
+ */
+function resolveTimeZone(wpTimezone: string | undefined): string {
+  if (wpTimezone && wpTimezone.includes("/")) return wpTimezone;
+  return "America/Denver";
+}
+
 export async function POST(req: NextRequest) {
   if (!verifySecret(req)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
       description: descriptionLines.join("\n"),
       startDateTime: toLocalIso(body.check_in),
       endDateTime: toLocalIso(body.check_out),
-      timeZone: body.timezone || "America/Denver",
+      timeZone: resolveTimeZone(body.timezone),
     });
 
     return NextResponse.json({ ok: true, event });
