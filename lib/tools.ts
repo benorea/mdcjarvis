@@ -10,6 +10,10 @@ import {
   WEEKLY_REVIEW_QUESTIONS,
   MONTHLY_CLOSE_QUESTIONS,
 } from "./planData";
+import { fieldVocabularyForPrompt } from "./reportCardFields";
+import { googleCalendarConfigured, listUpcomingEvents } from "./googleCalendar";
+import { localToUtcDate, todayInBusinessTimezone } from "./timezone";
+import { smsConfigured } from "./sms";
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
@@ -101,7 +105,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "google_calendar_read",
     description:
-      "Reads upcoming Google Calendar events (read-only). Stub — only works if GOOGLE_CALENDAR_ENABLED and credentials are configured in env. Never writes to the calendar.",
+      "Reads Ashley's upcoming Google Calendar events (read-only). Only works if GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN are configured in env. Never writes to the calendar — booking confirmations create events automatically via a separate webhook, not this tool.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -109,6 +113,77 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     description:
       "Reads confirmed bookings from the mayday-hub WordPress plugin's ICS calendar feed (read-only, secret-URL feed, no OAuth). Only works if WORDPRESS_ICS_URL is configured in env.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "submit_report_card",
+    description:
+      `Writes a dog report card into the mayday-hub site, the same as the staff wizard would. Use this when Ashley describes a dog's day or walk (typically from a voice note) and wants it logged.
+
+CRITICAL: only use the exact field keys and values listed below. If something wasn't clearly said, leave that field out entirely — do NOT guess a value or pick the "closest" enum option. Always fill extra_notes with a clean written summary of what was actually said, even if you also mapped some of it to specific fields, so nothing said is lost.
+
+${fieldVocabularyForPrompt()}
+
+If the dog's name doesn't match one on file, the tool will return the valid list — ask Ashley to confirm rather than guessing which one she meant.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        dog: {
+          type: "string",
+          description: "Dog's name exactly as it appears in MayDay Reports (e.g. 'Millie P.').",
+        },
+        report_type: { type: "string", enum: ["day", "walk"] },
+        date: { type: "string", description: "YYYY-MM-DD. Defaults to today (America/Denver) if omitted." },
+        time: { type: "string", description: "HH:MM 24h. Defaults to now (America/Denver) if omitted." },
+        appetite_am: { type: "string" },
+        appetite_pm: { type: "string" },
+        body_check: { type: "string" },
+        engagement_drive: { type: "string" },
+        energy_level: { type: "string" },
+        manners: { type: "string" },
+        meds: { type: "string", description: "Free text." },
+        enrichment: { type: "string", description: "Free text." },
+        body_check_notes: { type: "string", description: "Free text." },
+        botd: { type: "string", description: "Free text — who they socialized with." },
+        tension_with: { type: "string", description: "Free text." },
+        elims: { type: "string" },
+        state_of_mind: { type: "string" },
+        cooperation: { type: "string" },
+        enrichment_motivator: { type: "string" },
+        rest: { type: "string" },
+        social_log: { type: "string" },
+        sensitivities: { type: "string" },
+        feeling: { type: "string" },
+        walk_location: { type: "string" },
+        triggers_quantity: { type: "string" },
+        urination: { type: "string" },
+        defecation: { type: "string" },
+        panting: { type: "string" },
+        post_walk_recovery: { type: "string" },
+        walk_choice: { type: "string" },
+        state_of_mind_walk: { type: "string" },
+        sniff_scale: { type: "string" },
+        social_coping: { type: "string" },
+        leash_tension: { type: "string" },
+        cohesion: { type: "string" },
+        gait: { type: "string" },
+        extra_notes: { type: "string", description: "Free text — always include a clean summary here." },
+      },
+      required: ["dog", "report_type", "extra_notes"],
+    },
+  },
+  {
+    name: "schedule_reminder",
+    description:
+      "Schedules a text reminder to be sent to Ashley's phone at a specific date/time. Use this whenever she asks to be reminded of something ('don't let me forget to...', 'remind me at...'). Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. Only works if Twilio and OWNER_PHONE_NUMBER are configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The reminder text to send, written plainly, e.g. 'Give Millie her meds'." },
+        date: { type: "string", description: "YYYY-MM-DD, America/Denver. Defaults to today if omitted." },
+        time: { type: "string", description: "HH:MM in 24h time, America/Denver." },
+      },
+      required: ["message", "time"],
+    },
   },
 ];
 
@@ -146,10 +221,16 @@ export async function runTool(
       return checkIn("monthly", MONTHLY_CLOSE_QUESTIONS, input);
 
     case "google_calendar_read":
-      return googleCalendarRead();
+      return await googleCalendarRead();
 
     case "wordpress_bookings_read":
       return wordpressBookingsRead();
+
+    case "submit_report_card":
+      return submitReportCard(input);
+
+    case "schedule_reminder":
+      return scheduleReminder(input);
 
     default:
       return fail(`Unknown tool: ${name}`);
@@ -273,19 +354,22 @@ async function checkIn(
   return ok({ stored: true, type, answers });
 }
 
-function googleCalendarRead(): ToolResult {
-  if (process.env.GOOGLE_CALENDAR_ENABLED !== "true") {
+async function googleCalendarRead(): Promise<ToolResult> {
+  if (!googleCalendarConfigured()) {
     return ok({
       configured: false,
       message:
-        "Google Calendar read is not configured. Set GOOGLE_CALENDAR_ENABLED=true and the required credentials in env to enable this (see .env.example).",
+        "Google Calendar isn't connected yet. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in env (see README for the one-time setup) to enable this.",
     });
   }
-  return ok({
-    configured: true,
-    message:
-      "GOOGLE_CALENDAR_ENABLED is set but no calendar client is wired up yet — this stub is a placeholder for a future read-only integration.",
-  });
+  try {
+    const events = await listUpcomingEvents();
+    return ok({ configured: true, upcoming_events: events });
+  } catch (err) {
+    return fail(
+      `Could not read calendar: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 }
 
 async function wordpressBookingsRead(): Promise<ToolResult> {
@@ -311,6 +395,77 @@ async function wordpressBookingsRead(): Promise<ToolResult> {
       `Could not fetch ICS feed: ${err instanceof Error ? err.message : String(err)}`
     );
   }
+}
+
+async function submitReportCard(input: Record<string, unknown>): Promise<ToolResult> {
+  const apiUrl = process.env.WORDPRESS_API_URL;
+  const apiKey = process.env.WORDPRESS_API_KEY;
+
+  if (!apiUrl || !apiKey) {
+    return fail(
+      "Report cards aren't connected yet. Set WORDPRESS_API_URL and WORDPRESS_API_KEY in env (values from MayDay Co. -> Jarvis Integration in WP admin)."
+    );
+  }
+
+  const dog = String(input.dog || "").trim();
+  const extraNotes = String(input.extra_notes || "").trim();
+  if (!dog) return fail("dog is required");
+  if (!extraNotes) return fail("extra_notes is required — always summarize what was actually said");
+
+  try {
+    const res = await fetch(`${apiUrl.replace(/\/$/, "")}/wp-json/mayday-hub/v1/report-card`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(input),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return fail(data?.message || `WordPress returned ${res.status}`);
+    }
+
+    return ok(data);
+  } catch (err) {
+    return fail(
+      `Could not reach WordPress: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+async function scheduleReminder(input: Record<string, unknown>): Promise<ToolResult> {
+  if (!smsConfigured() || !process.env.OWNER_PHONE_NUMBER) {
+    return fail(
+      "Text reminders aren't set up yet — need TWILIO_ENABLED=true, Twilio credentials, and OWNER_PHONE_NUMBER in env."
+    );
+  }
+
+  const message = String(input.message || "").trim();
+  const time = String(input.time || "").trim();
+  const date = String(input.date || "").trim() || todayInBusinessTimezone();
+
+  if (!message) return fail("message is required");
+  if (!/^\d{2}:\d{2}$/.test(time)) return fail("time must be HH:MM (24h)");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("date must be YYYY-MM-DD");
+
+  const remindAt = localToUtcDate(date, time);
+  if (isNaN(remindAt.getTime())) return fail("Could not parse that date/time");
+  if (remindAt.getTime() < Date.now() - 60_000) {
+    return fail("That time is in the past — double check the date/time before scheduling.");
+  }
+
+  const supabase = getSupabaseServer();
+  const { error } = await supabase.from("reminders").insert({
+    message,
+    remind_at: remindAt.toISOString(),
+  });
+
+  if (error) return fail(error.message);
+
+  return ok({ scheduled: true, message, remind_at_utc: remindAt.toISOString(), remind_at_local: `${date} ${time} America/Denver` });
 }
 
 function parseIcsEvents(ics: string): { summary: string; start: string }[] {

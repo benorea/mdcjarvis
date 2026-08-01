@@ -32,7 +32,61 @@ type SpeechRecognitionLike = {
   lang: string;
 };
 
+function LockScreen({ onUnlock }: { onUnlock: () => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setChecking(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        setError("Wrong password.");
+        return;
+      }
+      onUnlock();
+    } catch {
+      setError("Couldn't reach the server — try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-cream px-6 dark:bg-[#1c1c18]">
+      <h1 className="text-lg font-semibold">Jarvis</h1>
+      <form onSubmit={submit} className="flex w-full max-w-xs flex-col gap-3">
+        <input
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+        />
+        {error && <p className="text-center text-xs text-red-500">{error}</p>}
+        <button
+          type="submit"
+          disabled={checking || !password}
+          className="rounded-full bg-sage px-4 py-2 text-sm text-white disabled:opacity-40"
+        >
+          {checking ? "Checking…" : "Unlock"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function ChatUI() {
+  const [authed, setAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,8 +97,31 @@ export default function ChatUI() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  async function loadHistory() {
+    try {
+      const res = await fetch(`/api/conversations?sessionId=${encodeURIComponent(sessionIdRef.current)}`);
+      if (res.status === 401) {
+        setAuthed(false);
+        return;
+      }
+      setAuthed(true);
+      const data = await res.json();
+      const loaded: Message[] = (data.messages || []).map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+      }));
+      setMessages(loaded);
+    } catch {
+      // Non-fatal — chat still works, it just starts blank this load.
+    } finally {
+      setAuthChecked(true);
+    }
+  }
+
   useEffect(() => {
     sessionIdRef.current = getSessionId();
+    loadHistory();
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {
@@ -62,6 +139,7 @@ export default function ChatUI() {
       recognition.lang = "en-US";
       recognitionRef.current = recognition;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -83,6 +161,13 @@ export default function ChatUI() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed, sessionId: sessionIdRef.current }),
       });
+
+      if (res.status === 401) {
+        setAuthed(false);
+        setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -114,24 +199,64 @@ export default function ChatUI() {
     }
   }
 
-  function startListening() {
+  function startListening(e: React.PointerEvent<HTMLButtonElement>) {
     const recognition = recognitionRef.current;
     if (!recognition || listening) return;
+
+    // Without this, a slight layout shift under the finger (or even normal
+    // touch jitter) fires pointerleave and yanks the mic back off a few ms
+    // after it started. Capturing the pointer ties all further events for
+    // this touch/click to this button regardless of where it physically is.
+    e.currentTarget.setPointerCapture(e.pointerId);
 
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript;
       if (transcript) sendMessage(transcript);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (event: any) => {
+      setListening(false);
+      const reason = event?.error || "unknown error";
+      if (reason === "no-speech" || reason === "aborted") return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            reason === "not-allowed" || reason === "service-not-allowed"
+              ? "Mic access is blocked — check your browser/site permissions and try again."
+              : `Mic error: ${reason}`,
+        },
+      ]);
+    };
     recognition.onend = () => setListening(false);
 
-    setListening(true);
-    recognition.start();
+    try {
+      setListening(true);
+      recognition.start();
+    } catch {
+      setListening(false);
+    }
   }
 
-  function stopListening() {
+  function stopListening(e?: React.PointerEvent<HTMLButtonElement>) {
+    if (e) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // already released — fine
+      }
+    }
     recognitionRef.current?.stop();
     setListening(false);
+  }
+
+  if (!authChecked) {
+    return <div className="flex h-dvh items-center justify-center bg-cream dark:bg-[#1c1c18]" />;
+  }
+
+  if (!authed) {
+    return <LockScreen onUnlock={loadHistory} />;
   }
 
   return (
@@ -192,13 +317,14 @@ export default function ChatUI() {
             type="button"
             onPointerDown={startListening}
             onPointerUp={stopListening}
-            onPointerLeave={() => listening && stopListening()}
-            className={`shrink-0 rounded-full px-3 py-2 text-sm ${
-              listening ? "bg-red-500 text-white" : "bg-sage/20"
+            onPointerCancel={stopListening}
+            style={{ touchAction: "none" }}
+            className={`flex shrink-0 select-none items-center justify-center rounded-full text-sm ${
+              listening ? "h-10 w-10 animate-pulse bg-red-500 text-white" : "h-10 w-10 bg-sage/20"
             }`}
             aria-label="Push to talk"
           >
-            {listening ? "● listening" : "🎤"}
+            {listening ? "●" : "🎤"}
           </button>
         )}
         <input

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReply } from "@/lib/chatEngine";
+import { isAuthed } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  if (!isAuthed(req)) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   let body: { message?: string; sessionId?: string };
   try {
     body = await req.json();

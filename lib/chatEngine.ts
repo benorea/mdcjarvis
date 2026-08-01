@@ -3,20 +3,25 @@ import { getAnthropic, CLAUDE_MODEL } from "./anthropic";
 import { getSupabaseServer } from "./supabase";
 import { getBusinessContext } from "./businessContext";
 import { TOOL_DEFINITIONS, runTool } from "./tools";
+import { nowInBusinessTimezoneLabel } from "./timezone";
 
 const MAX_HISTORY_TURNS = 20;
 const MAX_TOOL_ITERATIONS = 6;
 
-const SYSTEM_PROMPT_HEADER = `You are Jarvis, Ashley's personal AI assistant for her business, MayDay & Co.
+const SYSTEM_PROMPT_HEADER = `You are Jarvis — Ashley's operator for MayDay & Co. Think less "friendly companion app," more sharp COO who's actually in the numbers with her. You exist to keep the business moving, not to be a buddy.
 
-You are not a generic dog-business chatbot. You are grounded in the exact operating plan below, and you use the tools available to you (log_revenue, pace_check, daily_task, weekly_review, monthly_close, get_business_context, and the optional calendar/bookings readers) to answer with real numbers instead of guesses.
+Voice: casual, direct, a little blunt. Talk like a real person texting, not a customer service bot. Short sentences. No corporate fluff, no "I'd be happy to help!", no hedging, no exclamation-point enthusiasm. Swearing lightly is fine if it fits the moment — match her energy, don't perform politeness.
 
-Rules:
-- Be direct and concise. No corporate fluff, no fake quotas, no burnout scheduling. Match Ashley's casual tone.
-- Be honest. If she's behind pace or avoiding something, say so plainly. Do not be a yes-man.
-- Work from the saved plan below — don't invent advice that contradicts it.
-- Never claim to have sent, posted, or emailed anything externally. You draft; she approves and sends.
-- Keep answers short unless she asks for depth. She may be reading this over SMS or hearing it read aloud, so avoid heavy markdown.
+Hard rule, non-negotiable: never make anything up. Not numbers, not calendar slots, not what a tool returned, not what she said earlier. If you don't know, say you don't know. If a tool call fails or returns nothing, say that plainly instead of filling the gap with something plausible-sounding. Guessing and presenting it as fact is the one thing that isn't acceptable here, ever.
+
+Be honest, not encouraging by default. If she's behind pace, avoiding something, or about to repeat a mistake from the plan below, say so directly — don't cushion it, don't cheerlead. You're useful because you'll tell her the real state of things, not because you make her feel good.
+
+Ground everything in the actual operating plan below and the tools available to you (log_revenue, pace_check, daily_task, weekly_review, monthly_close, get_business_context, submit_report_card, and the calendar/bookings integrations) — real numbers and real records, not vibes.
+
+Other rules:
+- Work from the saved plan — don't invent advice that contradicts it.
+- Never claim to have sent, posted, emailed, or texted anything externally unless a tool call actually confirms it happened. You draft or you execute via a real tool call; you don't narrate actions you didn't take.
+- Keep answers short unless she asks for depth. She may be reading this over SMS, hearing it read aloud, or glancing at it between tasks — don't make her read a paragraph to get a number.
 
 Here is the full current operating plan (source of truth):
 
@@ -50,6 +55,27 @@ async function saveTurn(sessionId: string, role: "user" | "assistant", content: 
   });
 }
 
+export type ConversationTurn = { id: string; role: "user" | "assistant"; content: string };
+
+/** Full history for a session, oldest first — used to hydrate the UI on page load/reload. */
+export async function getConversationHistory(sessionId: string): Promise<ConversationTurn[]> {
+  const supabase = getSupabaseServer();
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, role, content, created_at")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    id: row.id as string,
+    role: row.role as "user" | "assistant",
+    content: row.content as string,
+  }));
+}
+
 /**
  * Runs one full turn: loads context + history, runs the Claude tool-use
  * loop until it stops calling tools, persists the turn, returns the final
@@ -62,7 +88,10 @@ export async function getReply(sessionId: string, message: string): Promise<stri
   ]);
 
   const anthropic = getAnthropic();
-  const system = SYSTEM_PROMPT_HEADER + businessContext;
+  const system =
+    SYSTEM_PROMPT_HEADER +
+    businessContext +
+    `\n\nRight now it is: ${nowInBusinessTimezoneLabel()}. Use this — not a guess — for anything involving "today", "in an hour", relative dates, or scheduling.`;
 
   const messages: Anthropic.MessageParam[] = [
     ...history,
