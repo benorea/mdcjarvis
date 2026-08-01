@@ -2,6 +2,8 @@
 // content/business-context.md; this file is the machine-readable mirror of
 // the ramped targets and routines described there. Keep the two in sync.
 
+import { todayInBusinessTimezone } from "./timezone";
+
 export type MonthlyTarget = {
   /** e.g. "2026-08" */
   month: string;
@@ -20,8 +22,9 @@ export const MONTHLY_TARGETS: MonthlyTarget[] = [
 
 export const GOAL_TOTAL = MONTHLY_TARGETS.reduce((sum, m) => sum + m.target, 0); // 10,000
 
-export function currentMonthKey(date: Date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+/** Defaults to Denver's current month, not the server's — the server runs in UTC, which is a different calendar day for a big chunk of every Denver evening. */
+export function currentMonthKey(dateStr: string = todayInBusinessTimezone()): string {
+  return dateStr.slice(0, 7);
 }
 
 export function targetForMonth(monthKey: string): MonthlyTarget | undefined {
@@ -102,9 +105,8 @@ export const PHASES: Phase[] = [
   },
 ];
 
-export function phaseForDate(date: Date = new Date()): Phase | undefined {
-  const key = date.toISOString().slice(0, 10);
-  return PHASES.find((p) => key >= p.from && key <= p.to);
+export function phaseForDate(dateStr: string = todayInBusinessTimezone()): Phase | undefined {
+  return PHASES.find((p) => dateStr >= p.from && dateStr <= p.to);
 }
 
 export const WEEKLY_REVIEW_QUESTIONS = [

@@ -69,8 +69,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const reply = await getReply(`sms:${from}`, body);
-    return new NextResponse(twiml(reply), {
+    const { text } = await getReply(`sms:${from}`, body);
+    return new NextResponse(twiml(text), {
       headers: { "Content-Type": "text/xml" },
     });
   } catch (err) {

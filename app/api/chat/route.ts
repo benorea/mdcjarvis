@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const reply = await getReply(sessionId, message);
-    return NextResponse.json({ reply });
+    const { text, toolCalls } = await getReply(sessionId, message);
+    return NextResponse.json({ reply: text, toolCalls });
   } catch (err) {
     console.error("chat route error", err);
     const detail = err instanceof Error ? err.message : String(err);

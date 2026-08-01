@@ -12,7 +12,7 @@ import {
 } from "./planData";
 import { fieldVocabularyForPrompt } from "./reportCardFields";
 import { googleCalendarConfigured, listUpcomingEvents } from "./googleCalendar";
-import { localToUtcDate, todayInBusinessTimezone } from "./timezone";
+import { localToUtcDate, todayInBusinessTimezone, lastDayOfMonth } from "./timezone";
 import { pushConfigured } from "./webpush";
 import { squareConfigured, createDraftInvoice } from "./square";
 
@@ -291,9 +291,7 @@ async function logRevenue(input: Record<string, unknown>): Promise<ToolResult> {
   const amount = Number(input.amount);
   const stream = String(input.stream || "").trim();
   const date =
-    typeof input.date === "string" && input.date
-      ? input.date
-      : new Date().toISOString().slice(0, 10);
+    typeof input.date === "string" && input.date ? input.date : todayInBusinessTimezone();
   const note = typeof input.note === "string" ? input.note : null;
 
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -332,8 +330,7 @@ async function paceCheck(input: Record<string, unknown>): Promise<ToolResult> {
 
   const supabase = getSupabaseServer();
   const start = `${month}-01`;
-  const [y, m] = month.split("-").map(Number);
-  const end = new Date(y, m, 0).toISOString().slice(0, 10); // last day of month
+  const end = `${month}-${String(lastDayOfMonth(month)).padStart(2, "0")}`;
 
   const { data, error } = await supabase
     .from("transactions")
@@ -497,8 +494,8 @@ async function estimateMonthlyEarnings(): Promise<ToolResult> {
 
   try {
     const monthKey = currentMonthKey();
-    const [y, m] = monthKey.split("-").map(Number);
-    const daysLeftInMonth = new Date(y, m, 0).getDate() - new Date().getDate() + 1;
+    const todayDay = Number(todayInBusinessTimezone().slice(8, 10));
+    const daysLeftInMonth = lastDayOfMonth(monthKey) - todayDay + 1;
     const data = await wordpressApiGet(`bookings?days=${Math.max(daysLeftInMonth, 1)}`);
 
     const bookingsThisMonth = (data.bookings || []).filter(

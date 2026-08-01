@@ -4,8 +4,15 @@
 // own Square Dashboard; Jarvis prepares, it never pulls the trigger.
 
 import crypto from "crypto";
+import { todayInBusinessTimezone } from "./timezone";
 
 const SQUARE_API_VERSION = "2024-01-18"; // pinned for stability; bump if Square deprecates it
+
+/** Pure calendar-day math on a "YYYY-MM-DD" string — deliberately not `new Date()` + local offsets. */
+function addDaysToDateString(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
 
 function squareBaseUrl(): string {
   return process.env.SQUARE_ENVIRONMENT === "sandbox"
@@ -93,7 +100,7 @@ export async function createDraftInvoice(
     }),
   });
 
-  const dueDate = opts.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const dueDate = opts.dueDate || addDaysToDateString(todayInBusinessTimezone(), 7);
 
   const invoice = await squareFetch("/invoices", {
     method: "POST",

@@ -78,12 +78,18 @@ export async function getConversationHistory(sessionId: string): Promise<Convers
   }));
 }
 
+export type ToolCallLog = { name: string; input: unknown; ok: boolean; result: unknown };
+
+export type ReplyResult = { text: string; toolCalls: ToolCallLog[] };
+
 /**
  * Runs one full turn: loads context + history, runs the Claude tool-use
  * loop until it stops calling tools, persists the turn, returns the final
- * assistant text. Shared by the web chat API route and the Twilio SMS stub.
+ * assistant text plus a log of every tool call made along the way (so the
+ * UI can show what actually happened, not just the final summary). Shared
+ * by the web chat API route and the Twilio SMS stub.
  */
-export async function getReply(sessionId: string, message: string): Promise<string> {
+export async function getReply(sessionId: string, message: string): Promise<ReplyResult> {
   const [businessContext, history] = await Promise.all([
     getBusinessContext(),
     loadHistory(sessionId),
@@ -101,6 +107,7 @@ export async function getReply(sessionId: string, message: string): Promise<stri
   ];
 
   let finalText = "";
+  const toolCalls: ToolCallLog[] = [];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const response = await anthropic.messages.create({
@@ -128,10 +135,9 @@ export async function getReply(sessionId: string, message: string): Promise<stri
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
-      const result = await runTool(
-        block.name,
-        (block.input as Record<string, unknown>) || {}
-      );
+      const input = (block.input as Record<string, unknown>) || {};
+      const result = await runTool(block.name, input);
+      toolCalls.push({ name: block.name, input, ok: result.ok, result: result.data });
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
@@ -148,5 +154,5 @@ export async function getReply(sessionId: string, message: string): Promise<stri
     saveTurn(sessionId, "assistant", finalText || "(no response)"),
   ]);
 
-  return finalText || "(no response)";
+  return { text: finalText || "(no response)", toolCalls };
 }

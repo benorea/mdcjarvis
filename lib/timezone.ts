@@ -70,3 +70,9 @@ export function todayInBusinessTimezone(): string {
   const get = (t: string) => parts.find((p) => p.type === t)?.value;
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
+
+/** Last calendar day number of a "YYYY-MM" month (e.g. 31 for "2026-08"). Pure calendar math, no server-timezone dependency. */
+export function lastDayOfMonth(monthKey: string): number {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}

@@ -2,10 +2,39 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type ToolCallLog = { name: string; ok: boolean };
+
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  toolCalls?: ToolCallLog[];
+};
+
+type StatusData = {
+  wordpress: boolean;
+  wordpressIcsOnly: boolean;
+  googleCalendar: boolean;
+  calendarWebhook: boolean;
+  square: boolean;
+  push: boolean;
+  twilioSms: boolean;
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  get_business_context: "Reading business plan",
+  log_revenue: "Logging revenue",
+  pace_check: "Checking pace",
+  daily_task: "Getting today's task",
+  weekly_review: "Weekly review",
+  monthly_close: "Monthly close",
+  submit_report_card: "Writing report card",
+  wordpress_pricing_read: "Reading live pricing",
+  wordpress_bookings_read: "Reading bookings",
+  estimate_monthly_earnings: "Estimating earnings",
+  schedule_reminder: "Scheduling reminder",
+  create_invoice: "Creating draft invoice",
+  google_calendar_read: "Reading calendar",
 };
 
 const SESSION_KEY = "jarvis_session_id";
@@ -27,6 +56,18 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+// iOS Safari's speech recognition passes feature detection (the constructor
+// exists) but silently does nothing when the site is running as an
+// installed home-screen app — a known Apple platform limitation, not
+// something fixable here. It only works in a regular Safari tab. Detect
+// that specific broken combo so we can say so instead of a silent hang.
+function isIosInstalledPwa(): boolean {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)").matches || (navigator as any).standalone === true;
+  return isIos && isStandalone;
 }
 
 // Minimal ambient types so this compiles without dom-speech lib types.
@@ -104,6 +145,9 @@ export default function ChatUI() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"unsupported" | "off" | "on" | "working">("off");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [statusData, setStatusData] = useState<StatusData | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
   const sessionIdRef = useRef<string>("default");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -197,9 +241,12 @@ export default function ChatUI() {
       }
 
       const reply: string = data.reply || "(no response)";
+      const toolCalls: ToolCallLog[] = Array.isArray(data.toolCalls)
+        ? data.toolCalls.map((t: any) => ({ name: t.name, ok: t.ok }))
+        : [];
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "assistant", content: reply },
+        { id: crypto.randomUUID(), role: "assistant", content: reply, toolCalls },
       ]);
 
       if (speakReplies && "speechSynthesis" in window) {
@@ -218,6 +265,19 @@ export default function ChatUI() {
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openStatus() {
+    setStatusOpen(true);
+    setStatusLoading(true);
+    try {
+      const res = await fetch("/api/status");
+      if (res.ok) setStatusData(await res.json());
+    } catch {
+      // Panel just shows nothing connected — not fatal.
+    } finally {
+      setStatusLoading(false);
     }
   }
 
@@ -264,6 +324,19 @@ export default function ChatUI() {
   function startListening(e: React.PointerEvent<HTMLButtonElement>) {
     const recognition = recognitionRef.current;
     if (!recognition || listening) return;
+
+    if (isIosInstalledPwa()) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "Voice doesn't work in the installed app on iPhone — that's an Apple limitation on installed home-screen apps, not something in here. Open this same site in a regular Safari tab instead (not the installed icon) and voice will work there. Typing works fine either way.",
+        },
+      ]);
+      return;
+    }
 
     // Without this, a slight layout shift under the finger (or even normal
     // touch jitter) fires pointerleave and yanks the mic back off a few ms
@@ -329,6 +402,9 @@ export default function ChatUI() {
           <p className="text-xs opacity-60">MayDay &amp; Co.</p>
         </div>
         <div className="flex items-center gap-3">
+          <button type="button" onClick={openStatus} className="text-xs opacity-80" title="What's connected right now">
+            ⓘ Status
+          </button>
           {notifStatus !== "unsupported" && (
             <button
               type="button"
@@ -351,6 +427,50 @@ export default function ChatUI() {
         </div>
       </header>
 
+      {statusOpen && (
+        <div
+          className="fixed inset-0 z-10 flex items-start justify-center bg-black/40 p-4 pt-16"
+          onClick={() => setStatusOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-4 text-sm shadow-xl dark:bg-[#2a2a24]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Status</h2>
+              <button type="button" onClick={() => setStatusOpen(false)} className="opacity-60" aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-1 text-xs font-semibold opacity-60">This device</div>
+            <ul className="mb-3 space-y-1">
+              <li>{voiceSupported ? "✅" : "❌"} Voice input {voiceSupported ? "supported" : "not supported in this browser"}</li>
+              <li>
+                {notifStatus === "on" ? "✅" : notifStatus === "unsupported" ? "❌" : "⚪"} Notifications:{" "}
+                {notifStatus === "on" ? "on" : notifStatus === "unsupported" ? "not supported here" : "off"}
+              </li>
+            </ul>
+
+            <div className="mb-1 text-xs font-semibold opacity-60">Connected integrations</div>
+            {statusLoading && <p className="opacity-60">Checking…</p>}
+            {!statusLoading && statusData && (
+              <ul className="space-y-1">
+                <li>
+                  {statusData.wordpress ? "✅" : statusData.wordpressIcsOnly ? "🟡" : "❌"} Report cards / live
+                  pricing / bookings{statusData.wordpressIcsOnly ? " (basic ICS only)" : ""}
+                </li>
+                <li>{statusData.googleCalendar ? "✅" : "❌"} Google Calendar reads</li>
+                <li>{statusData.calendarWebhook ? "✅" : "❌"} Calendar auto-sync on booking</li>
+                <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
+                <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
+              </ul>
+            )}
+            {!statusLoading && !statusData && <p className="opacity-60">Couldn&apos;t load status.</p>}
+          </div>
+        </div>
+      )}
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="mx-auto max-w-sm pt-16 text-center text-sm opacity-60">
@@ -369,6 +489,20 @@ export default function ChatUI() {
                   : "mr-auto bg-white/80 dark:bg-white/10"
               }`}
             >
+              {m.toolCalls && m.toolCalls.length > 0 && (
+                <div className="mb-1 flex flex-wrap gap-1">
+                  {m.toolCalls.map((t, i) => (
+                    <span
+                      key={i}
+                      className={`rounded-full px-2 py-0.5 text-[10px] ${
+                        t.ok ? "bg-black/10 dark:bg-white/15" : "bg-red-500/20 text-red-700 dark:text-red-300"
+                      }`}
+                    >
+                      {t.ok ? "🔧" : "⚠️"} {TOOL_LABELS[t.name] || t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
               {m.content}
               {m.role === "assistant" && (
                 <button
