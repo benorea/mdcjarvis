@@ -215,6 +215,14 @@ export default function ChatUI() {
     setVoiceSupported(
       typeof navigator.mediaDevices?.getUserMedia === "function" && typeof MediaRecorder !== "undefined"
     );
+
+    // Fetch integration status quietly up front (not just when the Status
+    // panel is opened) so the mic button can warn instantly if
+    // OPENAI_API_KEY isn't set, instead of after a wasted recording.
+    fetch("/api/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setStatusData(data))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -373,6 +381,19 @@ export default function ChatUI() {
 
   async function startRecording(e: React.PointerEvent<HTMLButtonElement>) {
     if (listening) return;
+
+    if (statusData && !statusData.voiceTranscription) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Voice notes need OPENAI_API_KEY set in env first — recording works, but there's nothing to transcribe it with yet.",
+        },
+      ]);
+      return;
+    }
+
     e.currentTarget.setPointerCapture(e.pointerId);
     pendingStopRef.current = false;
     setListening(true);
@@ -464,13 +485,13 @@ export default function ChatUI() {
           >
             ⓘ
           </button>
-          {notifStatus !== "unsupported" && (
+          {notifStatus !== "unsupported" && notifStatus !== "on" && (
             <button
               type="button"
               onClick={notifStatus === "off" ? enableNotifications : undefined}
-              disabled={notifStatus === "working" || notifStatus === "on"}
-              className={notifStatus === "on" ? "text-neon-pink" : "text-white/70 disabled:opacity-60"}
-              title={notifStatus === "on" ? "Reminders are on" : "Turn on reminder notifications"}
+              disabled={notifStatus === "working"}
+              className="text-white/70 disabled:opacity-60"
+              title="Turn on reminder notifications"
               aria-label="Notifications"
             >
               🔔
@@ -506,7 +527,6 @@ export default function ChatUI() {
 
             <div className="mb-1 text-xs font-semibold text-white/50">This device</div>
             <ul className="mb-3 space-y-1 text-white/80">
-              <li>{voiceSupported ? "✅" : "❌"} Voice notes {voiceSupported ? "supported" : "need mic access, not available here"}</li>
               <li>
                 {notifStatus === "on" ? "✅" : notifStatus === "unsupported" ? "❌" : "⚪"} Notifications:{" "}
                 {notifStatus === "on" ? "on" : notifStatus === "unsupported" ? "not supported here" : "off"}
@@ -518,6 +538,13 @@ export default function ChatUI() {
             {!statusLoading && statusData && (
               <ul className="space-y-1 text-white/80">
                 <li>
+                  {!voiceSupported
+                    ? "❌ Voice notes — this browser can't record audio"
+                    : statusData.voiceTranscription
+                      ? "✅ Voice notes — ready"
+                      : "❌ Voice notes — recording works, but OPENAI_API_KEY isn't set so nothing gets transcribed"}
+                </li>
+                <li>
                   {statusData.wordpress ? "✅" : statusData.wordpressIcsOnly ? "🟡" : "❌"} Report cards / live
                   pricing / bookings{statusData.wordpressIcsOnly ? " (basic ICS only)" : ""}
                 </li>
@@ -525,7 +552,6 @@ export default function ChatUI() {
                 <li>{statusData.calendarWebhook ? "✅" : "❌"} Calendar auto-sync on booking</li>
                 <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
                 <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
-                <li>{statusData.voiceTranscription ? "✅" : "❌"} Voice note transcription</li>
                 <li>{statusData.bookkeepingSheet ? "✅" : "❌"} Shared bookkeeping sheet</li>
               </ul>
             )}

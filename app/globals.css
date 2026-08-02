@@ -8,10 +8,16 @@ body {
 }
 
 /* Jarvis is always dark — a deliberate HUD identity, not tied to system
-   light/dark preference like a normal app would be. */
+   light/dark preference like a normal app would be. Faint grid + vignette
+   for the HUD command-center feel, subtle enough not to fight legibility. */
 body {
   background-color: #05050b;
   color: #e9f6ff;
+  background-image:
+    radial-gradient(ellipse at top, rgba(45, 217, 255, 0.06), transparent 60%),
+    linear-gradient(rgba(45, 217, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 217, 255, 0.05) 1px, transparent 1px);
+  background-size: auto, 28px 28px, 28px 28px;
 }
 
 ::selection {
