@@ -115,6 +115,17 @@ Sell async written plans NOW ($75, live in plugin). Finish + ship ONLY the enric
 4. Write listing copy (what they get, 72hr turnaround, who it's for).
 5. Announce on every channel, pin it.
 
+## Personal development goals (separate from the $10k ramp — don't count against it)
+
+Six courses Ashley wants to complete, no deadline attached yet:
+
+- [ ] DataCamp — Introduction to Data Engineering
+- [ ] edX — Introduction to Java Programming
+- [ ] IBM — Python for Data Science, AI & Development
+- [ ] Stanford — Machine Learning
+- [ ] Harvard — Introduction to Computer Science (CS50)
+- [ ] Google — Fundamentals of Digital Marketing
+
 ## Standing guardrails
 
 - December capacity is sacred — no experiments in December.
