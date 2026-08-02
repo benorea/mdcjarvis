@@ -67,6 +67,27 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+function HudRing({ size = 40, active = false }: { size?: number; active?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      className={active ? "recording-pulse rounded-full" : ""}
+    >
+      <defs>
+        <linearGradient id="hud-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff3ec8" />
+          <stop offset="100%" stopColor="#2dd9ff" />
+        </linearGradient>
+      </defs>
+      <circle cx="50" cy="50" r="46" fill="none" stroke="url(#hud-gradient)" strokeWidth="2" opacity="0.9" />
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#2dd9ff" strokeWidth="1" opacity="0.35" strokeDasharray="2 4" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="#ff3ec8" strokeWidth="2" opacity="0.9" />
+    </svg>
+  );
+}
+
 function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -95,8 +116,11 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-cream px-6 dark:bg-[#1c1c18]">
-      <h1 className="text-lg font-semibold">Jarvis</h1>
+    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-void px-6">
+      <HudRing size={64} />
+      <h1 className="bg-gradient-to-r from-neon-pink to-neon-cyan bg-clip-text text-xl font-semibold tracking-wide text-transparent">
+        JARVIS
+      </h1>
       <form onSubmit={submit} className="flex w-full max-w-xs flex-col gap-3">
         <input
           type="password"
@@ -104,13 +128,13 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+          className="rounded-full border border-neon-cyan/20 bg-panel px-4 py-2 text-sm text-neon-cyan outline-none placeholder:text-white/30 focus:border-neon-cyan/60 focus:shadow-glow-sm"
         />
-        {error && <p className="text-center text-xs text-red-500">{error}</p>}
+        {error && <p className="text-center text-xs text-neon-pink">{error}</p>}
         <button
           type="submit"
           disabled={checking || !password}
-          className="rounded-full bg-sage px-4 py-2 text-sm text-white disabled:opacity-40"
+          className="rounded-full bg-gradient-to-r from-neon-pink to-neon-cyan px-4 py-2 text-sm font-medium text-void disabled:opacity-40"
         >
           {checking ? "Checking…" : "Unlock"}
         </button>
@@ -402,7 +426,7 @@ export default function ChatUI() {
   }
 
   if (!authChecked) {
-    return <div className="flex h-dvh items-center justify-center bg-cream dark:bg-[#1c1c18]" />;
+    return <div className="flex h-dvh items-center justify-center bg-void" />;
   }
 
   if (!authed) {
@@ -410,42 +434,57 @@ export default function ChatUI() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-cream dark:bg-[#1c1c18]">
-      <header className="flex items-center justify-between border-b border-black/10 px-4 py-3 dark:border-white/10">
-        <div>
-          <h1 className="text-lg font-semibold">Jarvis</h1>
-          <p className="text-xs opacity-60">MayDay &amp; Co.</p>
+    <div className="flex h-dvh flex-col bg-void text-white">
+      <header className="border-b border-neon-cyan/15 bg-panel px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <HudRing size={26} active={listening} />
+            <h1 className="bg-gradient-to-r from-neon-pink to-neon-cyan bg-clip-text text-base font-semibold tracking-wide text-transparent">
+              JARVIS
+            </h1>
+          </div>
+          <p className="text-[11px] text-white/40">MayDay &amp; Co.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="mt-1.5 flex items-center justify-end gap-4 text-lg">
           <button
             type="button"
             onClick={() => setView(view === "chat" ? "dashboard" : "chat")}
-            className="text-xs opacity-80"
+            className="text-white/70 hover:text-neon-cyan"
+            title={view === "chat" ? "Open dashboard" : "Back to chat"}
+            aria-label={view === "chat" ? "Open dashboard" : "Back to chat"}
           >
-            {view === "chat" ? "📊 Dashboard" : "💬 Chat"}
+            {view === "chat" ? "📊" : "💬"}
           </button>
-          <button type="button" onClick={openStatus} className="text-xs opacity-80" title="What's connected right now">
-            ⓘ Status
+          <button
+            type="button"
+            onClick={openStatus}
+            className="text-white/70 hover:text-neon-cyan"
+            title="What's connected right now"
+            aria-label="Status"
+          >
+            ⓘ
           </button>
           {notifStatus !== "unsupported" && (
             <button
               type="button"
               onClick={notifStatus === "off" ? enableNotifications : undefined}
               disabled={notifStatus === "working" || notifStatus === "on"}
-              className="text-xs opacity-80 disabled:opacity-60"
-              title={notifStatus === "on" ? "Reminders will show up as notifications" : "Turn on reminder notifications"}
+              className={notifStatus === "on" ? "text-neon-pink" : "text-white/70 disabled:opacity-60"}
+              title={notifStatus === "on" ? "Reminders are on" : "Turn on reminder notifications"}
+              aria-label="Notifications"
             >
-              {notifStatus === "on" ? "🔔 Reminders on" : notifStatus === "working" ? "🔔 …" : "🔔 Enable reminders"}
+              🔔
             </button>
           )}
-          <label className="flex items-center gap-2 text-xs opacity-80">
-            <input
-              type="checkbox"
-              checked={speakReplies}
-              onChange={(e) => setSpeakReplies(e.target.checked)}
-            />
-            Speak replies
-          </label>
+          <button
+            type="button"
+            onClick={() => setSpeakReplies(!speakReplies)}
+            className={speakReplies ? "text-neon-cyan" : "text-white/40"}
+            title={speakReplies ? "Spoken replies on" : "Spoken replies off"}
+            aria-label="Toggle spoken replies"
+          >
+            {speakReplies ? "🔊" : "🔇"}
+          </button>
         </div>
       </header>
 
@@ -455,18 +494,18 @@ export default function ChatUI() {
           onClick={() => setStatusOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl bg-white p-4 text-sm shadow-xl dark:bg-[#2a2a24]"
+            className="w-full max-w-sm rounded-2xl border border-neon-cyan/20 bg-panel p-4 text-sm text-white shadow-glow"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Status</h2>
-              <button type="button" onClick={() => setStatusOpen(false)} className="opacity-60" aria-label="Close">
+              <h2 className="font-semibold text-neon-cyan">Status</h2>
+              <button type="button" onClick={() => setStatusOpen(false)} className="text-white/50 hover:text-white" aria-label="Close">
                 ✕
               </button>
             </div>
 
-            <div className="mb-1 text-xs font-semibold opacity-60">This device</div>
-            <ul className="mb-3 space-y-1">
+            <div className="mb-1 text-xs font-semibold text-white/50">This device</div>
+            <ul className="mb-3 space-y-1 text-white/80">
               <li>{voiceSupported ? "✅" : "❌"} Voice notes {voiceSupported ? "supported" : "need mic access, not available here"}</li>
               <li>
                 {notifStatus === "on" ? "✅" : notifStatus === "unsupported" ? "❌" : "⚪"} Notifications:{" "}
@@ -474,10 +513,10 @@ export default function ChatUI() {
               </li>
             </ul>
 
-            <div className="mb-1 text-xs font-semibold opacity-60">Connected integrations</div>
-            {statusLoading && <p className="opacity-60">Checking…</p>}
+            <div className="mb-1 text-xs font-semibold text-white/50">Connected integrations</div>
+            {statusLoading && <p className="text-white/50">Checking…</p>}
             {!statusLoading && statusData && (
-              <ul className="space-y-1">
+              <ul className="space-y-1 text-white/80">
                 <li>
                   {statusData.wordpress ? "✅" : statusData.wordpressIcsOnly ? "🟡" : "❌"} Report cards / live
                   pricing / bookings{statusData.wordpressIcsOnly ? " (basic ICS only)" : ""}
@@ -490,7 +529,7 @@ export default function ChatUI() {
                 <li>{statusData.bookkeepingSheet ? "✅" : "❌"} Shared bookkeeping sheet</li>
               </ul>
             )}
-            {!statusLoading && !statusData && <p className="opacity-60">Couldn&apos;t load status.</p>}
+            {!statusLoading && !statusData && <p className="text-white/50">Couldn&apos;t load status.</p>}
           </div>
         </div>
       )}
@@ -503,7 +542,7 @@ export default function ChatUI() {
         <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
-          <div className="mx-auto max-w-sm pt-16 text-center text-sm opacity-60">
+          <div className="mx-auto max-w-sm pt-16 text-center text-sm text-white/40">
             Ask about your numbers, today&apos;s task, or run your weekly review.
             Try: &quot;what&apos;s my one task today&quot; or &quot;log $58 boarding
             today&quot;.
@@ -515,8 +554,8 @@ export default function ChatUI() {
               key={m.id}
               className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user"
-                  ? "ml-auto bg-sage text-white"
-                  : "mr-auto bg-white/80 dark:bg-white/10"
+                  ? "ml-auto bg-gradient-to-br from-neon-purple/70 to-neon-pink/60 text-white"
+                  : "mr-auto border border-neon-cyan/15 bg-panel text-white/90"
               }`}
             >
               {m.toolCalls && m.toolCalls.length > 0 && (
@@ -525,7 +564,7 @@ export default function ChatUI() {
                     <span
                       key={i}
                       className={`rounded-full px-2 py-0.5 text-[10px] ${
-                        t.ok ? "bg-black/10 dark:bg-white/15" : "bg-red-500/20 text-red-700 dark:text-red-300"
+                        t.ok ? "bg-neon-cyan/10 text-neon-cyan" : "bg-neon-pink/20 text-neon-pink"
                       }`}
                     >
                       {t.ok ? "🔧" : "⚠️"} {TOOL_LABELS[t.name] || t.name}
@@ -543,7 +582,7 @@ export default function ChatUI() {
                       setTimeout(() => setCopiedId((id) => (id === m.id ? null : id)), 1500);
                     });
                   }}
-                  className="ml-2 align-middle text-xs opacity-40 hover:opacity-100"
+                  className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
                   aria-label="Copy"
                 >
                   {copiedId === m.id ? "copied" : "copy"}
@@ -552,12 +591,12 @@ export default function ChatUI() {
             </li>
           ))}
           {transcribing && (
-            <li className="mr-auto max-w-[85%] rounded-2xl bg-white/80 px-4 py-2 text-sm opacity-60 dark:bg-white/10">
+            <li className="mr-auto max-w-[85%] rounded-2xl border border-neon-cyan/15 bg-panel px-4 py-2 text-sm text-white/50">
               transcribing voice note…
             </li>
           )}
           {loading && (
-            <li className="mr-auto max-w-[85%] rounded-2xl bg-white/80 px-4 py-2 text-sm opacity-60 dark:bg-white/10">
+            <li className="mr-auto max-w-[85%] rounded-2xl border border-neon-cyan/15 bg-panel px-4 py-2 text-sm text-white/50">
               thinking…
             </li>
           )}
@@ -565,7 +604,7 @@ export default function ChatUI() {
       </div>
 
       <form
-        className="flex items-center gap-2 border-t border-black/10 p-3 dark:border-white/10"
+        className="flex items-center gap-2 border-t border-neon-cyan/15 bg-panel p-3"
         onSubmit={(e) => {
           e.preventDefault();
           sendMessage(input);
@@ -580,7 +619,9 @@ export default function ChatUI() {
             disabled={transcribing}
             style={{ touchAction: "none" }}
             className={`flex shrink-0 select-none items-center justify-center rounded-full text-sm disabled:opacity-40 ${
-              listening ? "h-10 w-10 animate-pulse bg-red-500 text-white" : "h-10 w-10 bg-sage/20"
+              listening
+                ? "recording-pulse h-10 w-10 bg-neon-pink text-void"
+                : "h-10 w-10 border border-neon-cyan/30 bg-panel text-neon-cyan"
             }`}
             aria-label="Record a voice note"
           >
@@ -588,7 +629,7 @@ export default function ChatUI() {
           </button>
         )}
         <input
-          className="flex-1 rounded-full border border-black/10 bg-white px-4 py-2 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+          className="flex-1 rounded-full border border-neon-cyan/20 bg-void px-4 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-neon-cyan/60 focus:shadow-glow-sm"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message Jarvis…"
@@ -596,7 +637,7 @@ export default function ChatUI() {
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="shrink-0 rounded-full bg-sage px-4 py-2 text-sm text-white disabled:opacity-40"
+          className="shrink-0 rounded-full bg-gradient-to-r from-neon-pink to-neon-cyan px-4 py-2 text-sm font-medium text-void disabled:opacity-40"
         >
           Send
         </button>

@@ -16,8 +16,8 @@ type DashboardData = {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white/80 p-4 dark:bg-white/10">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{title}</h3>
+    <div className="rounded-2xl border border-neon-cyan/15 bg-panel p-4 text-white">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neon-cyan/70">{title}</h3>
       {children}
     </div>
   );
@@ -52,14 +52,14 @@ export default function Dashboard() {
   }, []);
 
   if (loading) {
-    return <div className="p-6 text-center text-sm opacity-60">Loading…</div>;
+    return <div className="p-6 text-center text-sm text-white/50">Loading…</div>;
   }
 
   if (error || !data) {
     return (
-      <div className="p-6 text-center text-sm">
-        <p className="mb-2 opacity-60">{error || "Couldn't load dashboard."}</p>
-        <button type="button" onClick={load} className="text-sage underline">
+      <div className="p-6 text-center text-sm text-white">
+        <p className="mb-2 text-white/50">{error || "Couldn't load dashboard."}</p>
+        <button type="button" onClick={load} className="text-neon-cyan underline">
           Retry
         </button>
       </div>
@@ -76,8 +76,8 @@ export default function Dashboard() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs opacity-60">As of right now, {data.timezone}</p>
-        <button type="button" onClick={load} className="text-xs opacity-60 hover:opacity-100">
+        <p className="text-xs text-white/40">As of right now, {data.timezone}</p>
+        <button type="button" onClick={load} className="text-xs text-white/50 hover:text-neon-cyan">
           ↻ Refresh
         </button>
       </div>
@@ -86,20 +86,20 @@ export default function Dashboard() {
         {task?.top_task ? (
           <>
             <p className="text-sm font-medium">{task.top_task}</p>
-            {task.focus && <p className="mt-1 text-xs opacity-60">{task.focus}</p>}
+            {task.focus && <p className="mt-1 text-xs text-white/50">{task.focus}</p>}
           </>
         ) : (
-          <p className="text-sm opacity-60">{task?.message || "Nothing set."}</p>
+          <p className="text-sm text-white/50">{task?.message || "Nothing set."}</p>
         )}
       </Card>
 
       <Card title="Reminders today">
         {dueReminders.length === 0 ? (
-          <p className="text-sm opacity-60">Nothing scheduled for today.</p>
+          <p className="text-sm text-white/50">Nothing scheduled for today.</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {dueReminders.map((r, i) => (
-              <li key={i} className={r.sent ? "opacity-40 line-through" : ""}>
+              <li key={i} className={r.sent ? "text-white/30 line-through" : "text-white/90"}>
                 {new Date(r.remind_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} — {r.message}
               </li>
             ))}
@@ -109,39 +109,39 @@ export default function Dashboard() {
 
       <Card title="Money">
         {pace?.status ? (
-          <div className="space-y-1 text-sm">
+          <div className="space-y-1 text-sm text-white/90">
             <p>
               Logged this month: <strong>{money(pace.earned)}</strong> of {money(pace.target)} target
               {" "}
-              <span className={pace.status === "behind" ? "text-red-500" : "text-green-600"}>
+              <span className={pace.status === "behind" ? "text-neon-pink" : "text-neon-cyan"}>
                 ({pace.status === "behind" ? "behind" : "on/ahead"})
               </span>
             </p>
             {earnings?.booked_projected !== undefined && (
-              <p className="opacity-70">
+              <p className="text-white/60">
                 Booked (not yet earned): {money(earnings.booked_projected)}
                 {earnings.booking_count != null ? ` across ${earnings.booking_count} booking(s)` : ""}
               </p>
             )}
-            <p className="opacity-70">Cumulative toward $10k goal: {money(pace.cumulative_earned)}</p>
+            <p className="text-white/60">Cumulative toward $10k goal: {money(pace.cumulative_earned)}</p>
           </div>
         ) : (
-          <p className="text-sm opacity-60">{pace?.message || "No pace data yet — log some revenue first."}</p>
+          <p className="text-sm text-white/50">{pace?.message || "No pace data yet — log some revenue first."}</p>
         )}
       </Card>
 
       <Card title="Upcoming bookings">
         {bookingsList.length === 0 ? (
-          <p className="text-sm opacity-60">
+          <p className="text-sm text-white/50">
             {data.bookings?.configured === false ? data.bookings.message : "Nothing confirmed coming up."}
           </p>
         ) : (
-          <ul className="space-y-1.5 text-sm">
+          <ul className="space-y-1.5 text-sm text-white/90">
             {bookingsList.slice(0, 8).map((b: any, i: number) => (
               <li key={i}>
-                <span className="opacity-60">{String(b.check_in || b.start || "").slice(0, 10)}</span> —{" "}
+                <span className="text-white/50">{String(b.check_in || b.start || "").slice(0, 10)}</span> —{" "}
                 {b.service_label || b.summary} {b.dogs?.length ? `(${b.dogs.join(", ")})` : ""}
-                {b.subtotal != null && <span className="opacity-60"> · {money(b.subtotal)}</span>}
+                {b.subtotal != null && <span className="text-white/50"> · {money(b.subtotal)}</span>}
               </li>
             ))}
           </ul>
@@ -149,15 +149,15 @@ export default function Dashboard() {
       </Card>
 
       <Card title="Content">
-        <p className="text-sm">This month's theme: <strong>{data.contentTheme}</strong></p>
+        <p className="text-sm text-white/90">This month's theme: <strong>{data.contentTheme}</strong></p>
         {(data.contentIdeas?.ideas || []).length > 0 && (
           <>
-            <p className="mb-1 mt-2 text-xs font-semibold opacity-60">Saved ideas</p>
-            <ul className="space-y-1 text-sm">
+            <p className="mb-1 mt-2 text-xs font-semibold text-white/50">Saved ideas</p>
+            <ul className="space-y-1 text-sm text-white/90">
               {data.contentIdeas.ideas.slice(0, 6).map((i: any, idx: number) => (
                 <li key={idx}>
                   {i.idea}
-                  {i.series && <span className="opacity-60"> · {i.series}</span>}
+                  {i.series && <span className="text-white/50"> · {i.series}</span>}
                 </li>
               ))}
             </ul>
@@ -167,18 +167,18 @@ export default function Dashboard() {
 
       <Card title="Training / certification">
         {training?.cpdt_ka ? (
-          <div className="text-sm">
+          <div className="text-sm text-white/90">
             <p>
               CPDT-KA: <strong>{training.cpdt_ka.total_hours}</strong> / {training.cpdt_ka.target_hours} hrs
               {" "}
               ({training.cpdt_ka.remaining_hours} to go)
             </p>
             {training.last_entry_date && (
-              <p className="mt-1 opacity-60">Last logged session: {training.last_entry_date}</p>
+              <p className="mt-1 text-white/50">Last logged session: {training.last_entry_date}</p>
             )}
           </div>
         ) : (
-          <p className="text-sm opacity-60">{training?.message || "Not connected yet."}</p>
+          <p className="text-sm text-white/50">{training?.message || "Not connected yet."}</p>
         )}
       </Card>
     </div>

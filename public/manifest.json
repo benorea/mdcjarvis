@@ -4,8 +4,8 @@
   "description": "Personal AI assistant for MayDay & Co.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f1ea",
-  "theme_color": "#8a9a7b",
+  "background_color": "#05050b",
+  "theme_color": "#05050b",
   "orientation": "portrait",
   "icons": [
     {

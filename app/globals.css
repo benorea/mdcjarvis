@@ -7,14 +7,29 @@ body {
   height: 100%;
 }
 
+/* Jarvis is always dark — a deliberate HUD identity, not tied to system
+   light/dark preference like a normal app would be. */
 body {
-  background-color: #f4f1ea;
-  color: #2b2b26;
+  background-color: #05050b;
+  color: #e9f6ff;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #1c1c18;
-    color: #f4f1ea;
+::selection {
+  background-color: rgba(45, 217, 255, 0.35);
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 62, 200, 0.45);
   }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 62, 200, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 62, 200, 0);
+  }
+}
+
+.recording-pulse {
+  animation: pulse-ring 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
