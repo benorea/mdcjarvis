@@ -4,6 +4,7 @@ import { googleCalendarConfigured } from "@/lib/googleCalendar";
 import { pushConfigured } from "@/lib/webpush";
 import { squareConfigured } from "@/lib/square";
 import { sheetsConfigured } from "@/lib/googleSheets";
+import { anthropicKeyFingerprint } from "@/lib/anthropic";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,12 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    // Fingerprint only (prefix + last 4 chars + length) — enough to confirm
+    // which key is actually loaded on the running server, never the full
+    // secret. Compare this against the key you just generated when a 401
+    // "API key is invalid" shows up and you need to rule out a stale/wrong
+    // value in the deployment vs. an actual account/billing problem.
+    anthropicKeyFingerprint: anthropicKeyFingerprint(),
     wordpress: Boolean(process.env.WORDPRESS_API_URL && process.env.WORDPRESS_API_KEY),
     wordpressIcsOnly: Boolean(process.env.WORDPRESS_ICS_URL) && !process.env.WORDPRESS_API_URL,
     googleCalendar: googleCalendarConfigured(),

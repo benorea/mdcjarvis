@@ -13,6 +13,7 @@ type Message = {
 };
 
 type StatusData = {
+  anthropicKeyFingerprint: string | null;
   wordpress: boolean;
   wordpressIcsOnly: boolean;
   googleCalendar: boolean;
@@ -537,6 +538,12 @@ export default function ChatUI() {
             {statusLoading && <p className="text-white/50">Checking…</p>}
             {!statusLoading && statusData && (
               <ul className="space-y-1 text-white/80">
+                <li>
+                  {statusData.anthropicKeyFingerprint ? "✅" : "❌"} Core chat (Claude) key loaded:{" "}
+                  <span className="font-mono text-xs text-white/60">
+                    {statusData.anthropicKeyFingerprint || "not set"}
+                  </span>
+                </li>
                 <li>
                   {!voiceSupported
                     ? "❌ Voice notes — this browser can't record audio"
