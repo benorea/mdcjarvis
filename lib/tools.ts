@@ -16,6 +16,7 @@ import { localToUtcDate, todayInBusinessTimezone, lastDayOfMonth } from "./timez
 import { pushConfigured } from "./webpush";
 import { squareConfigured, createDraftInvoice } from "./square";
 import { sheetsConfigured, appendRow, readRange } from "./googleSheets";
+import { readSocialMetrics } from "./socialMetrics";
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
@@ -285,6 +286,12 @@ If the dog's name doesn't match one on file, the tool will return the valid list
     },
   },
   {
+    name: "social_metrics_read",
+    description:
+      "Reads current Instagram follower count and/or Facebook Page likes/followers. Use this when Ashley asks about her follower counts or social growth. Only works if META_ACCESS_TOKEN plus META_IG_USER_ID/META_PAGE_ID are configured.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "schedule_reminder",
     description:
       "Schedules a push notification reminder to Ashley's phone/devices at a specific date/time. Use this whenever she asks to be reminded of something ('don't let me forget to...', 'remind me at...'). Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. Only works if push notifications are configured (VAPID keys set, at least one device subscribed).",
@@ -365,6 +372,9 @@ export async function runTool(
 
     case "submit_report_card":
       return submitReportCard(input);
+
+    case "social_metrics_read":
+      return ok(await readSocialMetrics());
 
     case "schedule_reminder":
       return scheduleReminder(input);

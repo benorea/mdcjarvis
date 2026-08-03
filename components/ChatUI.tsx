@@ -23,6 +23,7 @@ type StatusData = {
   twilioSms: boolean;
   voiceTranscription: boolean;
   bookkeepingSheet: boolean;
+  socialMetrics: boolean;
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -580,6 +581,8 @@ export default function ChatUI() {
                 <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
                 <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
                 <li>{statusData.bookkeepingSheet ? "✅" : "❌"} Shared bookkeeping sheet</li>
+                <li>{statusData.socialMetrics ? "✅" : "❌"} Instagram/Facebook follower counts</li>
+                <li>✅ Web search — ask about reviews/mentions/rankings anytime</li>
               </ul>
             )}
             {!statusLoading && !statusData && <p className="text-white/50">Couldn&apos;t load status.</p>}

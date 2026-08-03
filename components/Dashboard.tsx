@@ -12,6 +12,8 @@ type DashboardData = {
   remindersToday: { message: string; remind_at: string; sent: boolean }[];
   contentTheme: string;
   timezone: string;
+  socialMetrics: any;
+  webPresence: { summary: string; created_at: string } | null;
 };
 
 function money(n: unknown): string {
@@ -314,6 +316,35 @@ export default function Dashboard() {
             </div>
           ) : (
             <p className="text-sm text-white/50">{training?.message || "Not connected yet."}</p>
+          )}
+        </HudPanel>
+
+        <HudPanel title="Social">
+          {data.socialMetrics?.configured ? (
+            <div className="space-y-1 text-sm text-white/90">
+              {data.socialMetrics.instagram && <p>Instagram: <strong>{data.socialMetrics.instagram.followers}</strong> followers</p>}
+              {data.socialMetrics.facebook && (
+                <p>
+                  Facebook: <strong>{data.socialMetrics.facebook.likes}</strong> likes ({data.socialMetrics.facebook.followers} followers)
+                </p>
+              )}
+              {data.socialMetrics.message && <p className="text-white/50">{data.socialMetrics.message}</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-white/50">{data.socialMetrics?.message || "Not connected yet."}</p>
+          )}
+        </HudPanel>
+
+        <HudPanel title="Web presence" className="sm:col-span-2">
+          {data.webPresence ? (
+            <>
+              <p className="whitespace-pre-wrap text-sm text-white/90">{data.webPresence.summary}</p>
+              <p className="mt-2 text-xs text-white/40">
+                Checked {new Date(data.webPresence.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-white/50">No search run yet — the daily check hasn&apos;t fired, or ask Jarvis directly in chat.</p>
           )}
         </HudPanel>
       </div>

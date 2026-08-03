@@ -35,6 +35,10 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
   capability exists in this file by design).
 - `lib/webpush.ts` — free push-notification delivery (VAPID), used for
   reminders.
+- `lib/socialMetrics.ts` — Instagram/Facebook follower counts via the Meta
+  Graph API.
+- `lib/webPresence.ts` — runs a live web search (Claude's web_search tool)
+  for the business name/domain and saves a daily snapshot.
 - `lib/timezone.ts` — converts local (America/Denver) date/times to UTC
   correctly (DST-aware), and injects "right now" into the system prompt so
   Claude never has to guess the date.
@@ -421,6 +425,27 @@ actual back-and-forth conversation over real SMS instead of the app:
 Each phone number gets its own conversation history (keyed as `sms:<number>`
 in the `conversations` table), separate from your PWA session. This is
 unrelated to reminders, which use free push notifications instead.
+
+## Web search (reviews, mentions, how the business shows up online)
+
+Ask Jarvis something like *"what's out there about MayDay & Co.?"* or *"how do we show up when someone searches maydayco.dog?"* and it runs a real live web search (Claude's built-in web search tool) and reports back only what the results actually say — no invented ratings or rankings. No setup needed; it uses the same `ANTHROPIC_API_KEY` already configured, at a small per-search cost.
+
+There's also a daily automated version: `.github/workflows/web-presence.yml` (same free GitHub Actions cron pattern as reminders) hits `/api/cron/web-presence` once a day, which runs the same search and saves a snapshot Supabase keeps. The Dashboard's **Web presence** panel always shows the latest one. No new setup required — it reuses `CRON_SECRET` and `JARVIS_APP_URL`, the same GitHub repo secrets the reminders workflow already needs.
+
+## Social metrics (Instagram followers, Facebook Page likes)
+
+Ask "how many Instagram followers do I have?" or check the Dashboard's **Social** panel for live counts.
+
+**Setup:**
+
+1. Go to [developers.facebook.com](https://developers.facebook.com) → **My Apps → Create App** → choose "Other" → "Business" as the type.
+2. In the app dashboard, add the **Instagram Graph API** product (for follower counts) — this requires your Instagram account to be a Business or Creator account linked to a Facebook Page.
+3. Under **Tools → Graph API Explorer**, select your app, generate a **User or Page Access Token** with the `instagram_basic` and `pages_read_engagement` permissions, then click **Generate Access Token** and grant access to your Page/Instagram account when prompted.
+4. That short-lived token works for testing; for something that keeps working, exchange it for a long-lived token (Graph API Explorer has a "Get long-lived token" option under the token's debug view, or use the `/oauth/access_token` endpoint with `grant_type=fb_exchange_token`) — long-lived Page tokens don't expire under normal use.
+5. Find your **Instagram Business Account ID**: Graph API Explorer → query `me/accounts` (lists your Pages) → then `<page-id>?fields=instagram_business_account` to get the linked IG account ID.
+6. Set in env: `META_ACCESS_TOKEN` (the token from step 4), `META_IG_USER_ID` (from step 5), and/or `META_PAGE_ID` (your Facebook Page ID, for Page likes) — set either or both depending on which platform(s) you want tracked.
+
+Since this is just your own account's data (not a public-facing app), it works fine in the app's default Development Mode — no Meta App Review process needed.
 
 ## Updating your business context
 

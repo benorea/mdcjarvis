@@ -4,6 +4,8 @@ import { runTool } from "@/lib/tools";
 import { getSupabaseServer } from "@/lib/supabase";
 import { todayInBusinessTimezone, BUSINESS_TIMEZONE } from "@/lib/timezone";
 import { contentThemeForMonth } from "@/lib/planData";
+import { readSocialMetrics } from "@/lib/socialMetrics";
+import { latestWebPresenceSnapshot } from "@/lib/webPresence";
 
 export const runtime = "nodejs";
 
@@ -32,15 +34,18 @@ export async function GET(req: NextRequest) {
 
   const monthNum = Number(todayInBusinessTimezone().slice(5, 7));
 
-  const [dailyTask, paceCheck, monthlyEarnings, bookings, training, contentIdeas, reminders] = await Promise.all([
-    runTool("daily_task", {}),
-    runTool("pace_check", {}),
-    runTool("estimate_monthly_earnings", {}),
-    runTool("wordpress_bookings_read", {}),
-    runTool("training_progress_read", {}),
-    runTool("list_content_ideas", { status: "idea" }),
-    remindersToday(),
-  ]);
+  const [dailyTask, paceCheck, monthlyEarnings, bookings, training, contentIdeas, reminders, socialMetrics, webPresence] =
+    await Promise.all([
+      runTool("daily_task", {}),
+      runTool("pace_check", {}),
+      runTool("estimate_monthly_earnings", {}),
+      runTool("wordpress_bookings_read", {}),
+      runTool("training_progress_read", {}),
+      runTool("list_content_ideas", { status: "idea" }),
+      remindersToday(),
+      readSocialMetrics().catch((err) => ({ configured: true, message: err instanceof Error ? err.message : String(err) })),
+      latestWebPresenceSnapshot(),
+    ]);
 
   return NextResponse.json({
     dailyTask: dailyTask.data,
@@ -52,5 +57,7 @@ export async function GET(req: NextRequest) {
     remindersToday: reminders,
     contentTheme: contentThemeForMonth(monthNum),
     timezone: BUSINESS_TIMEZONE,
+    socialMetrics,
+    webPresence,
   });
 }

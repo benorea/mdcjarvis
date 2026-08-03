@@ -1,0 +1,19 @@
+name: Web presence check
+
+# Once-a-day live web search for "MayDay & Co." / maydayco.dog, saved as a
+# snapshot the Dashboard shows. Vercel's free Hobby cron only fires once a
+# day too, but this keeps the pattern consistent with reminders.yml (GitHub
+# Actions, no Vercel cron dependency).
+on:
+  schedule:
+    - cron: "0 13 * * *" # ~7am America/Denver (UTC-6); adjust if you want a different time
+  workflow_dispatch: {}
+
+jobs:
+  check-web-presence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll web-presence endpoint
+        run: |
+          curl -fsS -X GET "${{ secrets.JARVIS_APP_URL }}/api/cron/web-presence" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"

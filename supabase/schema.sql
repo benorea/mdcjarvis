@@ -98,3 +98,15 @@ create table if not exists content_ideas (
 
 create index if not exists content_ideas_status_idx
   on content_ideas (status, created_at desc);
+
+-- Daily snapshot of what a live web search turns up for the business name /
+-- domain (reviews, mentions, how it shows up in search) — powers the
+-- Dashboard's "Web presence" panel. One row per day via the cron job.
+create table if not exists web_presence_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  summary text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists web_presence_snapshots_created_idx
+  on web_presence_snapshots (created_at desc);

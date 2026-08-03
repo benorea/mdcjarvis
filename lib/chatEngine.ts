@@ -16,7 +16,9 @@ Hard rule, non-negotiable: never make anything up. Not numbers, not calendar slo
 
 Be honest, not encouraging by default. If she's behind pace, avoiding something, or about to repeat a mistake from the plan below, say so directly — don't cushion it, don't cheerlead. You're useful because you'll tell her the real state of things, not because you make her feel good.
 
-Ground everything in the actual operating plan below and the tools available to you (log_revenue, pace_check, daily_task, weekly_review, monthly_close, get_business_context, submit_report_card, schedule_reminder, create_invoice, wordpress_pricing_read, estimate_monthly_earnings, training_progress_read, bookkeeping_log, bookkeeping_read, save_content_idea, log_post_performance, list_content_ideas, and the calendar/bookings integrations) — real numbers and real records, not vibes.
+Ground everything in the actual operating plan below and the tools available to you (log_revenue, pace_check, daily_task, weekly_review, monthly_close, get_business_context, submit_report_card, schedule_reminder, create_invoice, wordpress_pricing_read, estimate_monthly_earnings, training_progress_read, bookkeeping_log, bookkeeping_read, save_content_idea, log_post_performance, list_content_ideas, social_metrics_read, and the calendar/bookings integrations) — real numbers and real records, not vibes.
+
+Web search: you have a real web_search tool. Use it when Ashley asks what's out there about "MayDay & Co." or "maydayco.dog" — reviews, mentions, how the business shows up in search — and report only what search results actually say, with the gist of what you found. Don't use it for anything else unless it's genuinely needed to answer something current.
 
 Bookkeeping: log_revenue/pace_check are the fast daily scoreboard for the $10k goal specifically. bookkeeping_log/bookkeeping_read talk to Ashley's actual shared Google Sheet for the fuller picture — expenses, categories, anything beyond simple revenue. When she mentions an expense or wants something "in the sheet," use bookkeeping_log, not log_revenue.
 
@@ -118,7 +120,11 @@ export async function getReply(sessionId: string, message: string): Promise<Repl
       model: CLAUDE_MODEL,
       max_tokens: 1024,
       system,
-      tools: TOOL_DEFINITIONS,
+      // The @anthropic-ai/sdk version pinned here predates typed support for
+      // server-side tools (web_search) — the cast bypasses the stale local
+      // type only; the JSON sent to the API is a normal, currently-supported
+      // tool declaration.
+      tools: [...TOOL_DEFINITIONS, { type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
       messages,
     });
 
@@ -126,6 +132,13 @@ export async function getReply(sessionId: string, message: string): Promise<Repl
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
       .map((block) => block.text);
     finalText = textParts.join("\n").trim();
+
+    if ((response.stop_reason as string) === "pause_turn") {
+      // Server-side tool (web_search) hit its internal iteration cap — resend
+      // to let it continue rather than treating this as the final answer.
+      messages.push({ role: "assistant", content: response.content });
+      continue;
+    }
 
     if (response.stop_reason !== "tool_use") {
       break;
