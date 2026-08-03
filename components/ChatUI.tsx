@@ -152,7 +152,7 @@ export default function ChatUI() {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const [speakReplies, setSpeakReplies] = useState(true);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"unsupported" | "off" | "on" | "working">("off");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -268,11 +268,6 @@ export default function ChatUI() {
         { id: crypto.randomUUID(), role: "assistant", content: reply, toolCalls },
       ]);
 
-      if (speakReplies && "speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(reply);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
-      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -285,6 +280,40 @@ export default function ChatUI() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /** The browser's default TTS voice is usually the flattest, most robotic
+   * option it ships with. Network-backed voices (not localService) and named
+   * "enhanced/premium/natural" system voices sound meaningfully smoother —
+   * prefer those when the device has them installed. */
+  function pickVoice(): SpeechSynthesisVoice | undefined {
+    const voices = window.speechSynthesis.getVoices();
+    const english = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+    return (
+      english.find((v) => /enhanced|premium|natural/i.test(v.name)) ||
+      english.find((v) => /Google US English/i.test(v.name)) ||
+      english.find((v) => !v.localService) ||
+      english.find((v) => v.default) ||
+      english[0]
+    );
+  }
+
+  function speakMessage(id: string, text: string) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    if (speakingId === id) {
+      setSpeakingId(null);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = pickVoice();
+    if (voice) utterance.voice = voice;
+    utterance.rate = 0.97;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeakingId((cur) => (cur === id ? null : cur));
+    utterance.onerror = () => setSpeakingId((cur) => (cur === id ? null : cur));
+    setSpeakingId(id);
+    window.speechSynthesis.speak(utterance);
   }
 
   async function openStatus() {
@@ -498,15 +527,6 @@ export default function ChatUI() {
               🔔
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setSpeakReplies(!speakReplies)}
-            className={speakReplies ? "text-neon-cyan" : "text-white/40"}
-            title={speakReplies ? "Spoken replies on" : "Spoken replies off"}
-            aria-label="Toggle spoken replies"
-          >
-            {speakReplies ? "🔊" : "🔇"}
-          </button>
         </div>
       </header>
 
@@ -607,19 +627,30 @@ export default function ChatUI() {
               )}
               {m.content}
               {m.role === "assistant" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(m.content).then(() => {
-                      setCopiedId(m.id);
-                      setTimeout(() => setCopiedId((id) => (id === m.id ? null : id)), 1500);
-                    });
-                  }}
-                  className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
-                  aria-label="Copy"
-                >
-                  {copiedId === m.id ? "copied" : "copy"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => speakMessage(m.id, m.content)}
+                    className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
+                    aria-label={speakingId === m.id ? "Stop speaking" : "Speak this reply"}
+                    title={speakingId === m.id ? "Stop" : "Speak this reply"}
+                  >
+                    {speakingId === m.id ? "⏹ stop" : "🔊 speak"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(m.content).then(() => {
+                        setCopiedId(m.id);
+                        setTimeout(() => setCopiedId((id) => (id === m.id ? null : id)), 1500);
+                      });
+                    }}
+                    className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
+                    aria-label="Copy"
+                  >
+                    {copiedId === m.id ? "copied" : "copy"}
+                  </button>
+                </>
               )}
             </li>
           ))}
