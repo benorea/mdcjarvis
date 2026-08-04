@@ -12,7 +12,12 @@ type DashboardData = {
   remindersToday: { message: string; remind_at: string; sent: boolean }[];
   contentTheme: string;
   timezone: string;
-  socialMetrics: any;
+  socialMetrics: {
+    configured: boolean;
+    message?: string;
+    instagram?: { followers: number };
+    facebook?: { likes: number; followers: number };
+  };
   webPresence: { summary: string; created_at: string } | null;
 };
 

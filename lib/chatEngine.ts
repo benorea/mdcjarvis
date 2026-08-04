@@ -153,7 +153,15 @@ export async function getReply(sessionId: string, message: string): Promise<Repl
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
       const input = (block.input as Record<string, unknown>) || {};
-      const result = await runTool(block.name, input);
+      // Every tool handler is expected to catch its own errors and return
+      // { ok: false, ... } — this is a backstop so one tool throwing can
+      // never take down the whole chat turn with a raw 500.
+      let result: { ok: boolean; data: unknown };
+      try {
+        result = await runTool(block.name, input);
+      } catch (err) {
+        result = { ok: false, data: { error: err instanceof Error ? err.message : String(err) } };
+      }
       toolCalls.push({ name: block.name, input, ok: result.ok, result: result.data });
       toolResults.push({
         type: "tool_result",

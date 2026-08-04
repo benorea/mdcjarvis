@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { getSupabaseServer } from "@/lib/supabase";
 import { pushConfigured, sendPushToAll } from "@/lib/webpush";
+import { verifyCronSecret } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function verifyCronSecret(req: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  const given = req.headers.get("x-cron-secret");
-  if (!expected || !given) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given));
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Polled by the GitHub Actions workflow (.github/workflows/reminders.yml)

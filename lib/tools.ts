@@ -374,7 +374,7 @@ export async function runTool(
       return submitReportCard(input);
 
     case "social_metrics_read":
-      return ok(await readSocialMetrics());
+      return socialMetricsRead();
 
     case "schedule_reminder":
       return scheduleReminder(input);
@@ -589,6 +589,14 @@ async function wordpressPricingRead(): Promise<ToolResult> {
     return ok({ configured: true, ...data });
   } catch (err) {
     return fail(`Could not read live pricing: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function socialMetricsRead(): Promise<ToolResult> {
+  try {
+    return ok(await readSocialMetrics());
+  } catch (err) {
+    return fail(`Could not read social metrics: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

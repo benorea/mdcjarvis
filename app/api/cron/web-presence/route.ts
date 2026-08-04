@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { checkWebPresence, saveWebPresenceSnapshot } from "@/lib/webPresence";
+import { verifyCronSecret } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function verifyCronSecret(req: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  const given = req.headers.get("x-cron-secret");
-  if (!expected || !given) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given));
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Polled once a day by .github/workflows/web-presence.yml. Runs a real web

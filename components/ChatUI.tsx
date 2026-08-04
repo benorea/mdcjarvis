@@ -46,6 +46,8 @@ const TOOL_LABELS: Record<string, string> = {
   save_content_idea: "Saving content idea",
   log_post_performance: "Logging post performance",
   list_content_ideas: "Reading content ideas",
+  social_metrics_read: "Checking follower counts",
+  web_search: "Searching the web",
 };
 
 const SESSION_KEY = "jarvis_session_id";
