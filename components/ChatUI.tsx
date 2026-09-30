@@ -73,25 +73,22 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-function HudRing({ size = 40, active = false }: { size?: number; active?: boolean }) {
+/** Filled step-circle mark, matching the numbered stepper on maydayco.dog/book-with-us. */
+function Badge({ size = 40, active = false }: { size?: number; active?: boolean }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      className={active ? "recording-pulse rounded-full" : ""}
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-full border-2 border-navy bg-navy font-serif font-semibold text-cream ${
+        active ? "recording-pulse" : ""
+      }`}
+      style={{ width: size, height: size, fontSize: size * 0.42 }}
     >
-      <defs>
-        <linearGradient id="hud-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff3ec8" />
-          <stop offset="100%" stopColor="#2dd9ff" />
-        </linearGradient>
-      </defs>
-      <circle cx="50" cy="50" r="46" fill="none" stroke="url(#hud-gradient)" strokeWidth="2" opacity="0.9" />
-      <circle cx="50" cy="50" r="38" fill="none" stroke="#2dd9ff" strokeWidth="1" opacity="0.35" strokeDasharray="2 4" />
-      <circle cx="50" cy="50" r="10" fill="none" stroke="#ff3ec8" strokeWidth="2" opacity="0.9" />
-    </svg>
+      J
+    </div>
   );
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-purple">{children}</p>;
 }
 
 function LockScreen({ onUnlock }: { onUnlock: () => void }) {
@@ -122,11 +119,9 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-void px-6">
-      <HudRing size={64} />
-      <h1 className="bg-gradient-to-r from-neon-pink to-neon-cyan bg-clip-text text-xl font-semibold tracking-wide text-transparent">
-        JARVIS
-      </h1>
+    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-cream px-6">
+      <Badge size={64} />
+      <h1 className="font-serif text-2xl font-semibold tracking-tight text-navy">Jarvis</h1>
       <form onSubmit={submit} className="flex w-full max-w-xs flex-col gap-3">
         <input
           type="password"
@@ -134,13 +129,13 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="rounded-full border border-neon-cyan/20 bg-panel px-4 py-2 text-sm text-neon-cyan outline-none placeholder:text-white/30 focus:border-neon-cyan/60 focus:shadow-glow-sm"
+          className="rounded-full border border-hairline bg-card px-4 py-2 text-sm text-navy outline-none placeholder:text-navy/35 focus:border-purple/60"
         />
-        {error && <p className="text-center text-xs text-neon-pink">{error}</p>}
+        {error && <p className="text-center text-xs text-gold">{error}</p>}
         <button
           type="submit"
           disabled={checking || !password}
-          className="rounded-full bg-gradient-to-r from-neon-pink to-neon-cyan px-4 py-2 text-sm font-medium text-void disabled:opacity-40"
+          className="rounded-full bg-navy px-4 py-2 text-sm font-medium text-cream disabled:opacity-40"
         >
           {checking ? "Checking…" : "Unlock"}
         </button>
@@ -482,7 +477,7 @@ export default function ChatUI() {
   }
 
   if (!authChecked) {
-    return <div className="flex h-dvh items-center justify-center bg-void" />;
+    return <div className="flex h-dvh items-center justify-center bg-cream" />;
   }
 
   if (!authed) {
@@ -490,22 +485,20 @@ export default function ChatUI() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-void text-white">
-      <header className="border-b border-neon-cyan/15 bg-panel px-4 py-2">
+    <div className="flex h-dvh flex-col bg-cream text-navy">
+      <header className="border-b border-hairline bg-card px-4 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <HudRing size={26} active={listening} />
-            <h1 className="bg-gradient-to-r from-neon-pink to-neon-cyan bg-clip-text text-base font-semibold tracking-wide text-transparent">
-              JARVIS
-            </h1>
+            <Badge size={26} active={listening} />
+            <h1 className="font-serif text-base font-semibold tracking-tight text-navy">Jarvis</h1>
           </div>
-          <p className="text-[11px] text-white/40">MayDay &amp; Co.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-steel">MayDay &amp; Co.</p>
         </div>
         <div className="mt-1.5 flex items-center justify-end gap-4 text-lg">
           <button
             type="button"
             onClick={() => setView(view === "chat" ? "dashboard" : "chat")}
-            className="text-white/70 hover:text-neon-cyan"
+            className="text-navy/60 hover:text-purple"
             title={view === "chat" ? "Open dashboard" : "Back to chat"}
             aria-label={view === "chat" ? "Open dashboard" : "Back to chat"}
           >
@@ -514,7 +507,7 @@ export default function ChatUI() {
           <button
             type="button"
             onClick={openStatus}
-            className="text-white/70 hover:text-neon-cyan"
+            className="text-navy/60 hover:text-purple"
             title="What's connected right now"
             aria-label="Status"
           >
@@ -525,7 +518,7 @@ export default function ChatUI() {
               type="button"
               onClick={notifStatus === "off" ? enableNotifications : undefined}
               disabled={notifStatus === "working"}
-              className="text-white/70 disabled:opacity-60"
+              className="text-navy/60 disabled:opacity-60"
               title="Turn on reminder notifications"
               aria-label="Notifications"
             >
@@ -537,35 +530,35 @@ export default function ChatUI() {
 
       {statusOpen && (
         <div
-          className="fixed inset-0 z-10 flex items-start justify-center bg-black/40 p-4 pt-16"
+          className="fixed inset-0 z-10 flex items-start justify-center bg-navy/30 p-4 pt-16"
           onClick={() => setStatusOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl border border-neon-cyan/20 bg-panel p-4 text-sm text-white shadow-glow"
+            className="w-full max-w-sm rounded-2xl border border-hairline bg-card p-4 text-sm text-navy shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold text-neon-cyan">Status</h2>
-              <button type="button" onClick={() => setStatusOpen(false)} className="text-white/50 hover:text-white" aria-label="Close">
+              <h2 className="font-serif font-semibold text-purple">Status</h2>
+              <button type="button" onClick={() => setStatusOpen(false)} className="text-navy/50 hover:text-navy" aria-label="Close">
                 ✕
               </button>
             </div>
 
-            <div className="mb-1 text-xs font-semibold text-white/50">This device</div>
-            <ul className="mb-3 space-y-1 text-white/80">
+            <Eyebrow>This device</Eyebrow>
+            <ul className="mb-3 mt-1 space-y-1 text-navy/80">
               <li>
                 {notifStatus === "on" ? "✅" : notifStatus === "unsupported" ? "❌" : "⚪"} Notifications:{" "}
                 {notifStatus === "on" ? "on" : notifStatus === "unsupported" ? "not supported here" : "off"}
               </li>
             </ul>
 
-            <div className="mb-1 text-xs font-semibold text-white/50">Connected integrations</div>
-            {statusLoading && <p className="text-white/50">Checking…</p>}
+            <Eyebrow>Connected integrations</Eyebrow>
+            {statusLoading && <p className="mt-1 text-navy/50">Checking…</p>}
             {!statusLoading && statusData && (
-              <ul className="space-y-1 text-white/80">
+              <ul className="mt-1 space-y-1 text-navy/80">
                 <li>
                   {statusData.anthropicKeyFingerprint ? "✅" : "❌"} Core chat (Claude) key loaded:{" "}
-                  <span className="font-mono text-xs text-white/60">
+                  <span className="font-mono text-xs text-navy/60">
                     {statusData.anthropicKeyFingerprint || "not set"}
                   </span>
                 </li>
@@ -589,7 +582,7 @@ export default function ChatUI() {
                 <li>✅ Web search — ask about reviews/mentions/rankings anytime</li>
               </ul>
             )}
-            {!statusLoading && !statusData && <p className="text-white/50">Couldn&apos;t load status.</p>}
+            {!statusLoading && !statusData && <p className="mt-1 text-navy/50">Couldn&apos;t load status.</p>}
           </div>
         </div>
       )}
@@ -602,7 +595,7 @@ export default function ChatUI() {
         <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
-          <div className="mx-auto max-w-sm pt-16 text-center text-sm text-white/40">
+          <div className="mx-auto max-w-sm pt-16 text-center text-sm text-navy/45">
             Ask about your numbers, today&apos;s task, or run your weekly review.
             Try: &quot;what&apos;s my one task today&quot; or &quot;log $58 boarding
             today&quot;.
@@ -614,8 +607,8 @@ export default function ChatUI() {
               key={m.id}
               className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user"
-                  ? "ml-auto bg-gradient-to-br from-neon-purple/70 to-neon-pink/60 text-white"
-                  : "mr-auto border border-neon-cyan/15 bg-panel text-white/90"
+                  ? "ml-auto bg-navy text-cream"
+                  : "mr-auto border border-hairline bg-card text-navy"
               }`}
             >
               {m.toolCalls && m.toolCalls.length > 0 && (
@@ -623,8 +616,8 @@ export default function ChatUI() {
                   {m.toolCalls.map((t, i) => (
                     <span
                       key={i}
-                      className={`rounded-full px-2 py-0.5 text-[10px] ${
-                        t.ok ? "bg-neon-cyan/10 text-neon-cyan" : "bg-neon-pink/20 text-neon-pink"
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        t.ok ? "bg-purple/10 text-purple" : "bg-gold/15 text-gold"
                       }`}
                     >
                       {t.ok ? "🔧" : "⚠️"} {TOOL_LABELS[t.name] || t.name}
@@ -638,7 +631,7 @@ export default function ChatUI() {
                   <button
                     type="button"
                     onClick={() => speakMessage(m.id, m.content)}
-                    className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
+                    className="ml-2 align-middle text-xs font-semibold uppercase tracking-wide text-steel hover:text-purple"
                     aria-label={speakingId === m.id ? "Stop speaking" : "Speak this reply"}
                     title={speakingId === m.id ? "Stop" : "Speak this reply"}
                   >
@@ -652,7 +645,7 @@ export default function ChatUI() {
                         setTimeout(() => setCopiedId((id) => (id === m.id ? null : id)), 1500);
                       });
                     }}
-                    className="ml-2 align-middle text-xs text-neon-cyan/50 hover:text-neon-cyan"
+                    className="ml-2 align-middle text-xs font-semibold uppercase tracking-wide text-steel hover:text-purple"
                     aria-label="Copy"
                   >
                     {copiedId === m.id ? "copied" : "copy"}
@@ -662,12 +655,12 @@ export default function ChatUI() {
             </li>
           ))}
           {transcribing && (
-            <li className="mr-auto max-w-[85%] rounded-2xl border border-neon-cyan/15 bg-panel px-4 py-2 text-sm text-white/50">
+            <li className="mr-auto max-w-[85%] rounded-2xl border border-hairline bg-card px-4 py-2 text-sm text-navy/50">
               transcribing voice note…
             </li>
           )}
           {loading && (
-            <li className="mr-auto max-w-[85%] rounded-2xl border border-neon-cyan/15 bg-panel px-4 py-2 text-sm text-white/50">
+            <li className="mr-auto max-w-[85%] rounded-2xl border border-hairline bg-card px-4 py-2 text-sm text-navy/50">
               thinking…
             </li>
           )}
@@ -675,7 +668,7 @@ export default function ChatUI() {
       </div>
 
       <form
-        className="flex items-center gap-2 border-t border-neon-cyan/15 bg-panel p-3"
+        className="flex items-center gap-2 border-t border-hairline bg-card p-3"
         onSubmit={(e) => {
           e.preventDefault();
           sendMessage(input);
@@ -691,8 +684,8 @@ export default function ChatUI() {
             style={{ touchAction: "none" }}
             className={`flex shrink-0 select-none items-center justify-center rounded-full text-sm disabled:opacity-40 ${
               listening
-                ? "recording-pulse h-10 w-10 bg-neon-pink text-void"
-                : "h-10 w-10 border border-neon-cyan/30 bg-panel text-neon-cyan"
+                ? "recording-pulse h-10 w-10 bg-gold text-cream"
+                : "h-10 w-10 border border-hairline bg-cream text-navy"
             }`}
             aria-label="Record a voice note"
           >
@@ -700,7 +693,7 @@ export default function ChatUI() {
           </button>
         )}
         <input
-          className="flex-1 rounded-full border border-neon-cyan/20 bg-void px-4 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-neon-cyan/60 focus:shadow-glow-sm"
+          className="flex-1 rounded-full border border-hairline bg-cream px-4 py-2 text-sm text-navy outline-none placeholder:text-navy/35 focus:border-purple/60"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message Jarvis…"
@@ -708,7 +701,7 @@ export default function ChatUI() {
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="shrink-0 rounded-full bg-gradient-to-r from-neon-pink to-neon-cyan px-4 py-2 text-sm font-medium text-void disabled:opacity-40"
+          className="shrink-0 rounded-full bg-navy px-4 py-2 text-sm font-medium text-cream disabled:opacity-40"
         >
           Send
         </button>

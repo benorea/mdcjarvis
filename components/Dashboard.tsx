@@ -26,7 +26,8 @@ function money(n: unknown): string {
   return Number.isFinite(v) ? `$${v.toFixed(2)}` : "—";
 }
 
-function HudPanel({
+/** Plain bordered card matching maydayco.dog/book-with-us — small-caps eyebrow label, hairline rule, no glow. */
+function Panel({
   title,
   children,
   className = "",
@@ -36,12 +37,8 @@ function HudPanel({
   className?: string;
 }) {
   return (
-    <div className={`relative rounded-lg border border-neon-cyan/15 bg-panel p-4 text-white ${className}`}>
-      <span className="pointer-events-none absolute -left-px -top-px h-3 w-3 border-l-2 border-t-2 border-neon-cyan/50" />
-      <span className="pointer-events-none absolute -right-px -top-px h-3 w-3 border-r-2 border-t-2 border-neon-cyan/50" />
-      <span className="pointer-events-none absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-neon-cyan/50" />
-      <span className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-neon-cyan/50" />
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neon-cyan/70">{title}</h3>
+    <div className={`rounded-lg border border-hairline bg-card p-4 text-navy ${className}`}>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-steel">{title}</h3>
       {children}
     </div>
   );
@@ -51,7 +48,7 @@ function RadialGauge({
   pct,
   label,
   sublabel,
-  color = "#2dd9ff",
+  color = "#1B2E33",
 }: {
   pct: number;
   label: string;
@@ -65,7 +62,7 @@ function RadialGauge({
   return (
     <div className="flex flex-col items-center gap-1">
       <svg width="92" height="92" viewBox="0 0 92 92">
-        <circle cx="46" cy="46" r={r} fill="none" stroke="#ffffff17" strokeWidth="7" />
+        <circle cx="46" cy="46" r={r} fill="none" stroke="#DBD4BF" strokeWidth="7" />
         <circle
           cx="46"
           cy="46"
@@ -77,14 +74,13 @@ function RadialGauge({
           strokeDashoffset={offset}
           strokeLinecap="round"
           transform="rotate(-90 46 46)"
-          style={{ filter: `drop-shadow(0 0 5px ${color}aa)` }}
         />
-        <text x="46" y="51" textAnchor="middle" fontSize="17" fontWeight="700" fill="white">
+        <text x="46" y="51" textAnchor="middle" fontSize="17" fontWeight="700" fill="#1B2E33">
           {Math.round(clamped)}%
         </text>
       </svg>
-      <p className="text-center text-xs font-semibold text-white/80">{label}</p>
-      {sublabel && <p className="text-center text-[10px] text-white/40">{sublabel}</p>}
+      <p className="text-center text-xs font-semibold text-navy/80">{label}</p>
+      {sublabel && <p className="text-center text-[10px] text-navy/40">{sublabel}</p>}
     </div>
   );
 }
@@ -131,9 +127,9 @@ function computeHighlights(data: DashboardData): Highlight[] {
 }
 
 const TONE_STYLES: Record<Highlight["tone"], string> = {
-  alert: "border-neon-pink/40 text-neon-pink",
-  info: "border-neon-cyan/30 text-white/90",
-  ok: "border-neon-cyan/30 text-neon-cyan",
+  alert: "border-gold text-gold",
+  info: "border-steel/50 text-navy/80",
+  ok: "border-purple/50 text-purple",
 };
 
 export default function Dashboard() {
@@ -160,14 +156,14 @@ export default function Dashboard() {
   }, []);
 
   if (loading) {
-    return <div className="p-6 text-center text-sm text-white/50">Loading…</div>;
+    return <div className="p-6 text-center text-sm text-navy/50">Loading…</div>;
   }
 
   if (error || !data) {
     return (
-      <div className="p-6 text-center text-sm text-white">
-        <p className="mb-2 text-white/50">{error || "Couldn't load dashboard."}</p>
-        <button type="button" onClick={load} className="text-neon-cyan underline">
+      <div className="p-6 text-center text-sm text-navy">
+        <p className="mb-2 text-navy/50">{error || "Couldn't load dashboard."}</p>
+        <button type="button" onClick={load} className="text-purple underline">
           Retry
         </button>
       </div>
@@ -188,13 +184,13 @@ export default function Dashboard() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-white/40">As of right now, {data.timezone}</p>
-        <button type="button" onClick={load} className="text-xs text-white/50 hover:text-neon-cyan">
+        <p className="text-xs text-navy/40">As of right now, {data.timezone}</p>
+        <button type="button" onClick={load} className="text-xs text-navy/50 hover:text-purple">
           ↻ Refresh
         </button>
       </div>
 
-      <HudPanel title="Briefing">
+      <Panel title="Briefing">
         <ul className="space-y-1.5">
           {highlights.map((h, i) => (
             <li key={i} className={`flex items-start gap-2 rounded border-l-2 py-0.5 pl-2 text-sm ${TONE_STYLES[h.tone]}`}>
@@ -203,16 +199,16 @@ export default function Dashboard() {
             </li>
           ))}
         </ul>
-      </HudPanel>
+      </Panel>
 
       {(pace?.status || training?.cpdt_ka) && (
-        <div className="flex justify-around rounded-lg border border-neon-cyan/15 bg-panel py-4">
+        <div className="flex justify-around rounded-lg border border-hairline bg-card py-4">
           {pace?.status && (
             <RadialGauge
               pct={pacePct}
               label="Pace to target"
               sublabel={`${money(pace.earned)} / ${money(pace.target)}`}
-              color="#2dd9ff"
+              color="#1B2E33"
             />
           )}
           {training?.cpdt_ka && (
@@ -220,138 +216,138 @@ export default function Dashboard() {
               pct={cpdtPct}
               label="CPDT-KA"
               sublabel={`${training.cpdt_ka.total_hours} / ${training.cpdt_ka.target_hours} hrs`}
-              color="#ff3ec8"
+              color="#4F3F82"
             />
           )}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <HudPanel title="Today's one thing">
+        <Panel title="Today's one thing">
           {task?.top_task ? (
             <>
               <p className="text-sm font-medium">{task.top_task}</p>
-              {task.focus && <p className="mt-1 text-xs text-white/50">{task.focus}</p>}
+              {task.focus && <p className="mt-1 text-xs text-navy/50">{task.focus}</p>}
             </>
           ) : (
-            <p className="text-sm text-white/50">{task?.message || "Nothing set."}</p>
+            <p className="text-sm text-navy/50">{task?.message || "Nothing set."}</p>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Reminders today">
+        <Panel title="Reminders today">
           {dueReminders.length === 0 ? (
-            <p className="text-sm text-white/50">Nothing scheduled for today.</p>
+            <p className="text-sm text-navy/50">Nothing scheduled for today.</p>
           ) : (
             <ul className="space-y-1 text-sm">
               {dueReminders.map((r, i) => (
-                <li key={i} className={r.sent ? "text-white/30 line-through" : "text-white/90"}>
+                <li key={i} className={r.sent ? "text-navy/30 line-through" : "text-navy/90"}>
                   {new Date(r.remind_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} — {r.message}
                 </li>
               ))}
             </ul>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Money">
+        <Panel title="Money">
           {pace?.status ? (
-            <div className="space-y-1 text-sm text-white/90">
+            <div className="space-y-1 text-sm text-navy/90">
               <p>
                 Logged this month: <strong>{money(pace.earned)}</strong> of {money(pace.target)} target
               </p>
               {earnings?.booked_projected !== undefined && (
-                <p className="text-white/60">
+                <p className="text-navy/60">
                   Booked (not yet earned): {money(earnings.booked_projected)}
                   {earnings.booking_count != null ? ` across ${earnings.booking_count} booking(s)` : ""}
                 </p>
               )}
-              <p className="text-white/60">Cumulative toward $10k goal: {money(pace.cumulative_earned)}</p>
+              <p className="text-navy/60">Cumulative toward $10k goal: {money(pace.cumulative_earned)}</p>
             </div>
           ) : (
-            <p className="text-sm text-white/50">{pace?.message || "No pace data yet — log some revenue first."}</p>
+            <p className="text-sm text-navy/50">{pace?.message || "No pace data yet — log some revenue first."}</p>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Upcoming bookings">
+        <Panel title="Upcoming bookings">
           {bookingsList.length === 0 ? (
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-navy/50">
               {data.bookings?.configured === false ? data.bookings.message : "Nothing confirmed coming up."}
             </p>
           ) : (
-            <ul className="space-y-1.5 text-sm text-white/90">
+            <ul className="space-y-1.5 text-sm text-navy/90">
               {bookingsList.slice(0, 8).map((b: any, i: number) => (
                 <li key={i}>
-                  <span className="text-white/50">{String(b.check_in || b.start || "").slice(0, 10)}</span> —{" "}
+                  <span className="text-navy/50">{String(b.check_in || b.start || "").slice(0, 10)}</span> —{" "}
                   {b.service_label || b.summary} {b.dogs?.length ? `(${b.dogs.join(", ")})` : ""}
-                  {b.subtotal != null && <span className="text-white/50"> · {money(b.subtotal)}</span>}
+                  {b.subtotal != null && <span className="text-navy/50"> · {money(b.subtotal)}</span>}
                 </li>
               ))}
             </ul>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Content">
-          <p className="text-sm text-white/90">
+        <Panel title="Content">
+          <p className="text-sm text-navy/90">
             This month's theme: <strong>{data.contentTheme}</strong>
           </p>
           {(data.contentIdeas?.ideas || []).length > 0 && (
             <>
-              <p className="mb-1 mt-2 text-xs font-semibold text-white/50">Saved ideas</p>
-              <ul className="space-y-1 text-sm text-white/90">
+              <p className="mb-1 mt-2 text-xs font-semibold text-navy/50">Saved ideas</p>
+              <ul className="space-y-1 text-sm text-navy/90">
                 {data.contentIdeas.ideas.slice(0, 6).map((i: any, idx: number) => (
                   <li key={idx}>
                     {i.idea}
-                    {i.series && <span className="text-white/50"> · {i.series}</span>}
+                    {i.series && <span className="text-navy/50"> · {i.series}</span>}
                   </li>
                 ))}
               </ul>
             </>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Training / certification">
+        <Panel title="Training / certification">
           {training?.cpdt_ka ? (
-            <div className="text-sm text-white/90">
+            <div className="text-sm text-navy/90">
               <p>
                 CPDT-KA: <strong>{training.cpdt_ka.total_hours}</strong> / {training.cpdt_ka.target_hours} hrs (
                 {training.cpdt_ka.remaining_hours} to go)
               </p>
               {training.last_entry_date && (
-                <p className="mt-1 text-white/50">Last logged session: {training.last_entry_date}</p>
+                <p className="mt-1 text-navy/50">Last logged session: {training.last_entry_date}</p>
               )}
             </div>
           ) : (
-            <p className="text-sm text-white/50">{training?.message || "Not connected yet."}</p>
+            <p className="text-sm text-navy/50">{training?.message || "Not connected yet."}</p>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Social">
+        <Panel title="Social">
           {data.socialMetrics?.configured ? (
-            <div className="space-y-1 text-sm text-white/90">
+            <div className="space-y-1 text-sm text-navy/90">
               {data.socialMetrics.instagram && <p>Instagram: <strong>{data.socialMetrics.instagram.followers}</strong> followers</p>}
               {data.socialMetrics.facebook && (
                 <p>
                   Facebook: <strong>{data.socialMetrics.facebook.likes}</strong> likes ({data.socialMetrics.facebook.followers} followers)
                 </p>
               )}
-              {data.socialMetrics.message && <p className="text-white/50">{data.socialMetrics.message}</p>}
+              {data.socialMetrics.message && <p className="text-navy/50">{data.socialMetrics.message}</p>}
             </div>
           ) : (
-            <p className="text-sm text-white/50">{data.socialMetrics?.message || "Not connected yet."}</p>
+            <p className="text-sm text-navy/50">{data.socialMetrics?.message || "Not connected yet."}</p>
           )}
-        </HudPanel>
+        </Panel>
 
-        <HudPanel title="Web presence" className="sm:col-span-2">
+        <Panel title="Web presence" className="sm:col-span-2">
           {data.webPresence ? (
             <>
-              <p className="whitespace-pre-wrap text-sm text-white/90">{data.webPresence.summary}</p>
-              <p className="mt-2 text-xs text-white/40">
+              <p className="whitespace-pre-wrap text-sm text-navy/90">{data.webPresence.summary}</p>
+              <p className="mt-2 text-xs text-navy/40">
                 Checked {new Date(data.webPresence.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
               </p>
             </>
           ) : (
-            <p className="text-sm text-white/50">No search run yet — the daily check hasn&apos;t fired, or ask Jarvis directly in chat.</p>
+            <p className="text-sm text-navy/50">No search run yet — the daily check hasn&apos;t fired, or ask Jarvis directly in chat.</p>
           )}
-        </HudPanel>
+        </Panel>
       </div>
     </div>
   );

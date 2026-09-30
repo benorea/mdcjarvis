@@ -8,19 +8,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // J.A.R.V.I.S HUD palette — always-dark, cyan/magenta glow on near-black.
-        void: "#05050b",
-        panel: "#0d0d18",
-        panel2: "#14142266",
-        neon: {
-          cyan: "#2dd9ff",
-          pink: "#ff3ec8",
-          purple: "#9b5cff",
-        },
+        // maydayco.dog "Book with us" palette — warm cream, navy ink,
+        // purple accent, gold highlight, steel-blue utility text.
+        cream: "#F2ECDC",
+        card: "#F8F4E9",
+        navy: "#1B2E33",
+        purple: "#4F3F82",
+        gold: "#B8863A",
+        steel: "#5D7A89",
+        hairline: "#DBD4BF",
       },
-      boxShadow: {
-        glow: "0 0 12px 0 rgba(45,217,255,0.35), 0 0 4px 0 rgba(255,62,200,0.25)",
-        "glow-sm": "0 0 6px 0 rgba(45,217,255,0.3)",
+      fontFamily: {
+        serif: ["var(--font-serif)", "Georgia", "serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
     },
   },
