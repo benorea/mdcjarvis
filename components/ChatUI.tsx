@@ -91,6 +91,44 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-purple">{children}</p>;
 }
 
+/** Thin-line icons matching the outlined-circle icon style on maydayco.dog (house/paw badges) — stroke only, no fills. */
+function ChartIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <rect x="3" y="10" width="3.2" height="7" />
+      <rect x="8.4" y="6" width="3.2" height="11" />
+      <rect x="13.8" y="3" width="3.2" height="14" />
+    </svg>
+  );
+}
+
+function ChatBubbleIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4.5h12a2 2 0 0 1 2 2V12a2 2 0 0 1-2 2H8.5L5 17v-3H4a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2Z" />
+    </svg>
+  );
+}
+
+function InfoIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <circle cx="10" cy="10" r="7.25" />
+      <line x1="10" y1="9" x2="10" y2="13.5" />
+      <circle cx="10" cy="6.4" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function BellIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 8.5a5 5 0 0 1 10 0c0 3.2 1.1 4.3 1.6 4.9a.6.6 0 0 1-.45 1H3.85a.6.6 0 0 1-.45-1C3.9 12.8 5 11.7 5 8.5Z" />
+      <path d="M8.2 16.3a1.9 1.9 0 0 0 3.6 0" />
+    </svg>
+  );
+}
+
 function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -494,7 +532,7 @@ export default function ChatUI() {
           </div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-steel">MayDay &amp; Co.</p>
         </div>
-        <div className="mt-1.5 flex items-center justify-end gap-4 text-lg">
+        <div className="mt-1.5 flex items-center justify-end gap-4">
           <button
             type="button"
             onClick={() => setView(view === "chat" ? "dashboard" : "chat")}
@@ -502,7 +540,7 @@ export default function ChatUI() {
             title={view === "chat" ? "Open dashboard" : "Back to chat"}
             aria-label={view === "chat" ? "Open dashboard" : "Back to chat"}
           >
-            {view === "chat" ? "📊" : "💬"}
+            {view === "chat" ? <ChartIcon /> : <ChatBubbleIcon />}
           </button>
           <button
             type="button"
@@ -511,7 +549,7 @@ export default function ChatUI() {
             title="What's connected right now"
             aria-label="Status"
           >
-            ⓘ
+            <InfoIcon />
           </button>
           {notifStatus !== "unsupported" && notifStatus !== "on" && (
             <button
@@ -522,7 +560,7 @@ export default function ChatUI() {
               title="Turn on reminder notifications"
               aria-label="Notifications"
             >
-              🔔
+              <BellIcon />
             </button>
           )}
         </div>
