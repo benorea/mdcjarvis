@@ -382,6 +382,14 @@ push a notification to your phone at 6pm America/Denver time — no texting
 service, no recurring cost. Uses the Web Push standard (the same mechanism
 behind every site that asks "allow notifications?").
 
+**Recurring reminders:** say *"remind me every Sunday to review the Goal
+Tracker"* or *"remind me every day at 8am to log revenue"* and it keeps
+repeating on that cadence indefinitely — same day-of-week (weekly) or
+day-of-month (monthly, clamped at month-end) each time. Ask *"what reminders
+do I have coming up?"* to see everything scheduled, or *"cancel the Sunday
+reminder"* to stop one (works for recurring ones too — it just stops the
+series rather than only skipping the next occurrence).
+
 **Setup:**
 
 1. Generate a VAPID keypair once:

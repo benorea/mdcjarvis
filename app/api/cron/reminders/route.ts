@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
 import { pushConfigured, sendPushToAll } from "@/lib/webpush";
 import { verifyCronSecret } from "@/lib/cronAuth";
+import { localToUtcDate, utcToLocalParts, nextRecurrenceDate, type Recurrence } from "@/lib/timezone";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseServer();
   const { data: due, error } = await supabase
     .from("reminders")
-    .select("id, message")
+    .select("id, message, remind_at, recurrence")
     .eq("sent", false)
     .lte("remind_at", new Date().toISOString())
     .limit(20);
@@ -41,6 +42,18 @@ export async function GET(req: NextRequest) {
         .update({ sent: true, sent_at: new Date().toISOString() })
         .eq("id", reminder.id);
       sentCount++;
+
+      const recurrence = reminder.recurrence as Recurrence | null;
+      if (recurrence) {
+        const { date, time } = utcToLocalParts(new Date(reminder.remind_at));
+        const nextDate = nextRecurrenceDate(date, recurrence);
+        const nextRemindAt = localToUtcDate(nextDate, time);
+        await supabase.from("reminders").insert({
+          message: reminder.message,
+          remind_at: nextRemindAt.toISOString(),
+          recurrence,
+        });
+      }
     } catch (err) {
       console.error(`reminder ${reminder.id} failed to send`, err);
     }

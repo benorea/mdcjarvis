@@ -69,6 +69,13 @@ create table if not exists reminders (
 create index if not exists reminders_due_idx
   on reminders (remind_at) where sent = false;
 
+-- Recurring reminders ("remind me every Sunday to..."): null = one-time.
+-- Only the NEXT occurrence exists as a row at any given time — the cron job
+-- regenerates the following one when it fires one that has a recurrence set,
+-- so cancelling the pending row is enough to stop the whole series.
+alter table reminders add column if not exists recurrence text
+  check (recurrence in ('daily', 'weekly', 'monthly'));
+
 -- Web Push subscriptions — one row per browser/device that's enabled
 -- notifications. A phone and a laptop both installing the PWA means two
 -- rows; reminders push to all of them.

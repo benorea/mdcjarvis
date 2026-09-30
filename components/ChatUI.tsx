@@ -48,6 +48,8 @@ const TOOL_LABELS: Record<string, string> = {
   list_content_ideas: "Reading content ideas",
   social_metrics_read: "Checking follower counts",
   web_search: "Searching the web",
+  list_reminders: "Checking reminders",
+  cancel_reminder: "Cancelling reminder",
 };
 
 const SESSION_KEY = "jarvis_session_id";

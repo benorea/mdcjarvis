@@ -76,3 +76,50 @@ export function lastDayOfMonth(monthKey: string): number {
   const [y, m] = monthKey.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
+
+/** Inverse of localToUtcDate: given a UTC instant, returns its wall-clock date ("YYYY-MM-DD") and time ("HH:MM") in `timeZone`. */
+export function utcToLocalParts(
+  date: Date,
+  timeZone: string = BUSINESS_TIMEZONE
+): { date: string; time: string } {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = dtf.formatToParts(date).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== "literal") acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+}
+
+/** Pure calendar-day math on a "YYYY-MM-DD" string — deliberately not `new Date()` + local offsets. */
+export function addDaysToDateString(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Adds `months` calendar months to a "YYYY-MM-DD" string, clamping the day to the target month's last day (Jan 31 + 1 month -> Feb 28/29, not March 2/3). */
+export function addMonthsToDateString(dateStr: string, months: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const totalMonths = y * 12 + (m - 1) + months;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonth = (totalMonths % 12) + 1;
+  const monthKey = `${targetYear}-${String(targetMonth).padStart(2, "0")}`;
+  const clampedDay = Math.min(d, lastDayOfMonth(monthKey));
+  return `${monthKey}-${String(clampedDay).padStart(2, "0")}`;
+}
+
+export type Recurrence = "daily" | "weekly" | "monthly";
+
+/** Given the local date a recurring reminder just fired on, returns the local date of its next occurrence. */
+export function nextRecurrenceDate(currentDateStr: string, recurrence: Recurrence): string {
+  if (recurrence === "daily") return addDaysToDateString(currentDateStr, 1);
+  if (recurrence === "weekly") return addDaysToDateString(currentDateStr, 7);
+  return addMonthsToDateString(currentDateStr, 1);
+}

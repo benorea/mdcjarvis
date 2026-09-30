@@ -12,7 +12,7 @@ import {
 } from "./planData";
 import { fieldVocabularyForPrompt } from "./reportCardFields";
 import { googleCalendarConfigured, listUpcomingEvents } from "./googleCalendar";
-import { localToUtcDate, todayInBusinessTimezone, lastDayOfMonth } from "./timezone";
+import { localToUtcDate, todayInBusinessTimezone, lastDayOfMonth, type Recurrence } from "./timezone";
 import { pushConfigured } from "./webpush";
 import { squareConfigured, createDraftInvoice } from "./square";
 import { sheetsConfigured, appendRow, readRange } from "./googleSheets";
@@ -294,15 +294,36 @@ If the dog's name doesn't match one on file, the tool will return the valid list
   {
     name: "schedule_reminder",
     description:
-      "Schedules a push notification reminder to Ashley's phone/devices at a specific date/time. Use this whenever she asks to be reminded of something ('don't let me forget to...', 'remind me at...'). Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. Only works if push notifications are configured (VAPID keys set, at least one device subscribed).",
+      "Schedules a push notification reminder to Ashley's phone/devices — one-time by default, or recurring if she implies a repeating cadence ('every Sunday', 'every day', 'monthly', 'every week'). Use this whenever she asks to be reminded of something. Resolve relative times ('6pm today', 'in an hour') against the current date/time given in the system prompt — never guess the date. For a recurring reminder, `date` is the FIRST occurrence (e.g. 'every Sunday' -> the next upcoming Sunday), and it then keeps repeating on that cadence indefinitely — use cancel_reminder if she wants to stop one later. Only works if push notifications are configured (VAPID keys set, at least one device subscribed).",
     input_schema: {
       type: "object",
       properties: {
         message: { type: "string", description: "The reminder text to send, written plainly, e.g. 'Give Millie her meds'." },
-        date: { type: "string", description: "YYYY-MM-DD, America/Denver. Defaults to today if omitted." },
+        date: { type: "string", description: "YYYY-MM-DD, America/Denver. Defaults to today if omitted. For a recurring reminder, the date of its first occurrence." },
         time: { type: "string", description: "HH:MM in 24h time, America/Denver." },
+        recurrence: {
+          type: "string",
+          enum: ["daily", "weekly", "monthly"],
+          description: "Omit for a one-time reminder. 'daily' for every day, 'weekly' for every Sunday/every week (same day-of-week each time), 'monthly' for every month (same day-of-month, clamped at month end).",
+        },
       },
       required: ["message", "time"],
+    },
+  },
+  {
+    name: "list_reminders",
+    description: "Lists every reminder that hasn't fired yet (one-time and the next occurrence of each recurring one), so Ashley can see what's scheduled or so you can find the right one to cancel.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "cancel_reminder",
+    description: "Cancels a not-yet-sent reminder by matching text in its message. For a recurring reminder, this stops the whole series (only the next occurrence exists as a row at any time). If nothing matches, or more than one reminder matches, it returns the list instead of guessing — ask Ashley which one she means.",
+    input_schema: {
+      type: "object",
+      properties: {
+        message_contains: { type: "string", description: "A substring to match against the reminder's message, case-insensitive, e.g. 'meds' or 'Sunday'." },
+      },
+      required: ["message_contains"],
     },
   },
 ];
@@ -378,6 +399,12 @@ export async function runTool(
 
     case "schedule_reminder":
       return scheduleReminder(input);
+
+    case "list_reminders":
+      return listReminders();
+
+    case "cancel_reminder":
+      return cancelReminder(input);
 
     case "create_invoice":
       return createInvoice(input);
@@ -809,10 +836,14 @@ async function scheduleReminder(input: Record<string, unknown>): Promise<ToolRes
   const message = String(input.message || "").trim();
   const time = String(input.time || "").trim();
   const date = String(input.date || "").trim() || todayInBusinessTimezone();
+  const recurrenceRaw = String(input.recurrence || "").trim();
+  const recurrence: Recurrence | null =
+    recurrenceRaw === "daily" || recurrenceRaw === "weekly" || recurrenceRaw === "monthly" ? recurrenceRaw : null;
 
   if (!message) return fail("message is required");
   if (!/^\d{2}:\d{2}$/.test(time)) return fail("time must be HH:MM (24h)");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("date must be YYYY-MM-DD");
+  if (recurrenceRaw && !recurrence) return fail("recurrence must be daily, weekly, or monthly");
 
   const remindAt = localToUtcDate(date, time);
   if (isNaN(remindAt.getTime())) return fail("Could not parse that date/time");
@@ -824,11 +855,59 @@ async function scheduleReminder(input: Record<string, unknown>): Promise<ToolRes
   const { error } = await supabase.from("reminders").insert({
     message,
     remind_at: remindAt.toISOString(),
+    recurrence,
   });
 
   if (error) return fail(error.message);
 
-  return ok({ scheduled: true, message, remind_at_utc: remindAt.toISOString(), remind_at_local: `${date} ${time} America/Denver` });
+  return ok({
+    scheduled: true,
+    message,
+    remind_at_utc: remindAt.toISOString(),
+    remind_at_local: `${date} ${time} America/Denver`,
+    recurrence: recurrence || "one-time",
+  });
+}
+
+async function listReminders(): Promise<ToolResult> {
+  const supabase = getSupabaseServer();
+  const { data, error } = await supabase
+    .from("reminders")
+    .select("message, remind_at, recurrence")
+    .eq("sent", false)
+    .order("remind_at", { ascending: true });
+
+  if (error) return fail(error.message);
+  return ok({ reminders: data || [] });
+}
+
+async function cancelReminder(input: Record<string, unknown>): Promise<ToolResult> {
+  const query = String(input.message_contains || "").trim();
+  if (!query) return fail("message_contains is required");
+
+  const supabase = getSupabaseServer();
+  const { data: matches, error: findError } = await supabase
+    .from("reminders")
+    .select("id, message, remind_at, recurrence")
+    .eq("sent", false)
+    .ilike("message", `%${query}%`);
+
+  if (findError) return fail(findError.message);
+  if (!matches || matches.length === 0) {
+    return ok({ cancelled: false, message: "No matching reminder found.", reminders: [] });
+  }
+  if (matches.length > 1) {
+    return ok({
+      cancelled: false,
+      message: "More than one reminder matches — ask which one before cancelling.",
+      reminders: matches,
+    });
+  }
+
+  const { error: deleteError } = await supabase.from("reminders").delete().eq("id", matches[0].id);
+  if (deleteError) return fail(deleteError.message);
+
+  return ok({ cancelled: true, reminder: matches[0] });
 }
 
 async function createInvoice(input: Record<string, unknown>): Promise<ToolResult> {
