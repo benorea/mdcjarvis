@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
     calendarWebhook: Boolean(process.env.JARVIS_CALENDAR_WEBHOOK_SECRET),
     square: squareConfigured(),
     push: pushConfigured(),
-    twilioSms: process.env.TWILIO_ENABLED === "true",
     voiceTranscription: Boolean(process.env.OPENAI_API_KEY),
     bookkeepingSheet: sheetsConfigured(),
     socialMetrics: socialMetricsConfigured(),

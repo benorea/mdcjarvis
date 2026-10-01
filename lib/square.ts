@@ -6,7 +6,7 @@
 import crypto from "crypto";
 import { todayInBusinessTimezone } from "./timezone";
 
-const SQUARE_API_VERSION = "2024-01-18"; // pinned for stability; bump if Square deprecates it
+const SQUARE_API_VERSION = "2025-10-16"; // pinned for stability; bump if Square deprecates it — was stale at 2024-01-18
 
 /** Pure calendar-day math on a "YYYY-MM-DD" string — deliberately not `new Date()` + local offsets. */
 function addDaysToDateString(dateStr: string, days: number): string {

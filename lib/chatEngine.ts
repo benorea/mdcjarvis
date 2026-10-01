@@ -104,10 +104,27 @@ export async function getReply(sessionId: string, message: string): Promise<Repl
   ]);
 
   const anthropic = getAnthropic();
-  const system =
-    SYSTEM_PROMPT_HEADER +
-    businessContext +
-    `\n\nRight now it is: ${nowInBusinessTimezoneLabel()}. Use this — not a guess — for anything involving "today", "in an hour", relative dates, or scheduling.`;
+  // Split system into a stable block (header + business plan — identical on
+  // every call) and a volatile one (current date/time, changes every
+  // minute). Only the stable block is marked cacheable: putting the
+  // timestamp in the same block would bust the cache on every single
+  // request. With 20+ tool definitions and the full business plan resent on
+  // every tool-loop iteration otherwise, this is the single biggest cost
+  // lever this app has — cached reads are ~10% of normal input price, and a
+  // multi-tool-call question re-sends this block up to MAX_TOOL_ITERATIONS
+  // times. The SDK version here predates typed cache_control support; the
+  // cast bypasses the stale local type only, the JSON sent is current-API-standard.
+  const system = [
+    {
+      type: "text",
+      text: SYSTEM_PROMPT_HEADER + businessContext,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: `\n\nRight now it is: ${nowInBusinessTimezoneLabel()}. Use this — not a guess — for anything involving "today", "in an hour", relative dates, or scheduling.`,
+    },
+  ] as unknown as Array<Anthropic.TextBlockParam>;
 
   const messages: Anthropic.MessageParam[] = [
     ...history,
@@ -129,6 +146,15 @@ export async function getReply(sessionId: string, message: string): Promise<Repl
       tools: [...TOOL_DEFINITIONS, { type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
       messages,
     });
+
+    const usage = response.usage as unknown as {
+      input_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
+    console.log(
+      `chat turn ${i}: input=${usage.input_tokens} cache_write=${usage.cache_creation_input_tokens || 0} cache_read=${usage.cache_read_input_tokens || 0}`
+    );
 
     const textParts = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")

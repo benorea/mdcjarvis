@@ -20,7 +20,6 @@ type StatusData = {
   calendarWebhook: boolean;
   square: boolean;
   push: boolean;
-  twilioSms: boolean;
   voiceTranscription: boolean;
   bookkeepingSheet: boolean;
   socialMetrics: boolean;
@@ -614,7 +613,6 @@ export default function ChatUI() {
                 <li>{statusData.googleCalendar ? "✅" : "❌"} Google Calendar reads</li>
                 <li>{statusData.calendarWebhook ? "✅" : "❌"} Calendar auto-sync on booking</li>
                 <li>{statusData.square ? "✅" : "❌"} Square draft invoices</li>
-                <li>{statusData.twilioSms ? "✅" : "❌"} Two-way SMS texting</li>
                 <li>{statusData.bookkeepingSheet ? "✅" : "❌"} Shared bookkeeping sheet</li>
                 <li>{statusData.socialMetrics ? "✅" : "❌"} Instagram/Facebook follower counts</li>
                 <li>✅ Web search — ask about reviews/mentions/rankings anytime</li>

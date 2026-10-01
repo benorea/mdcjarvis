@@ -15,8 +15,7 @@ browser's built-in speech APIs, so there's no extra voice service to pay for.
 - `app/api/chat/route.ts` — chat API. Runs Claude with tool-use in a loop
   until it stops calling tools, then returns the final reply.
 - `lib/chatEngine.ts` — the shared turn logic (system prompt + history +
-  tool loop + current date/time injection). Used by the web chat route and
-  the Twilio SMS route.
+  tool loop + current date/time injection). Used by the web chat route.
 - `lib/tools.ts` — everything Claude can do: `get_business_context`,
   `log_revenue`, `pace_check`, `daily_task`, `weekly_review`,
   `monthly_close`, `submit_report_card`, `wordpress_pricing_read`,
@@ -418,21 +417,6 @@ Notes:
   all of them.
 - Reminders are one-way: Jarvis eventually notifies you, you can't reply to
   the notification itself and have it do anything.
-
-## Texting Jarvis for real (separate from reminders)
-
-The PWA is the default and needs no third-party service. If you want an
-actual back-and-forth conversation over real SMS instead of the app:
-
-1. Create a [Twilio](https://twilio.com) account, buy a phone number
-   (small recurring cost — your call whether it's worth it).
-2. Set `TWILIO_ENABLED=true` and `TWILIO_AUTH_TOKEN` in env.
-3. Point the number's **"A message comes in"** webhook at
-   `https://<your-deployment>/api/twilio/sms`.
-
-Each phone number gets its own conversation history (keyed as `sms:<number>`
-in the `conversations` table), separate from your PWA session. This is
-unrelated to reminders, which use free push notifications instead.
 
 ## Web search (reviews, mentions, how the business shows up online)
 
