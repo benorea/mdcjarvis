@@ -46,7 +46,11 @@ async function loadHistory(sessionId: string): Promise<Anthropic.MessageParam[]>
     .order("created_at", { ascending: false })
     .limit(MAX_HISTORY_TURNS);
 
-  if (error || !data) return [];
+  if (error) {
+    console.error("loadHistory: Supabase error", error);
+    return [];
+  }
+  if (!data) return [];
 
   return data
     .reverse()
@@ -58,11 +62,18 @@ async function loadHistory(sessionId: string): Promise<Anthropic.MessageParam[]>
 
 async function saveTurn(sessionId: string, role: "user" | "assistant", content: string) {
   const supabase = getSupabaseServer();
-  await supabase.from("conversations").insert({
+  const { error } = await supabase.from("conversations").insert({
     session_id: sessionId,
     role,
     content,
   });
+  if (error) {
+    // Supabase's client resolves with { error } on a DB-level failure rather
+    // than rejecting — without this check, a broken connection or missing
+    // table fails completely silently and chat keeps working with nothing
+    // ever actually saved. Surface it loudly in server logs instead.
+    console.error(`saveTurn failed (session=${sessionId}, role=${role}):`, error);
+  }
 }
 
 export type ConversationTurn = { id: string; role: "user" | "assistant"; content: string };
@@ -77,7 +88,11 @@ export async function getConversationHistory(sessionId: string): Promise<Convers
     .order("created_at", { ascending: true })
     .limit(200);
 
-  if (error || !data) return [];
+  if (error) {
+    console.error("getConversationHistory: Supabase error", error);
+    return [];
+  }
+  if (!data) return [];
 
   return data.map((row) => ({
     id: row.id as string,
